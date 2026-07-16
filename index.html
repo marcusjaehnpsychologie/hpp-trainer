@@ -100,7 +100,8 @@ const STORE_KEY = "hpp_trainer_full_v1";
 const BOX_DAYS = {1:0,2:1,3:3,4:7,5:16};
 let state = load();
 function load(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY)) || fresh(); }catch(e){ return fresh(); } }
-function fresh(){ return {cards:{}, answered:0, correct:0}; }
+function fresh(){ return {cards:{}, answered:0, correct:0, settings:{rate:1, autoRead:false}}; }
+function settings(){ if(!state.settings) state.settings={rate:1, autoRead:false}; return state.settings; }
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 function cardState(id){ if(!state.cards[id]) state.cards[id]={box:1,due:0,seen:0}; return state.cards[id]; }
 function today(){ return Math.floor(Date.now()/86400000); }
@@ -126,7 +127,7 @@ function setSpeakBtn(b,on){ if(b) b.textContent = on ? "\u23F9 Stopp" : "\uD83D\
 function speak(text, btn){
   if(!TTS) return;
   if(speechSynthesis.speaking || speechSynthesis.pending){ speechSynthesis.cancel(); setSpeakBtn(btn,false); return; }
-  const u=new SpeechSynthesisUtterance(text); u.lang="de-DE"; const v=ttsVoice(); if(v) u.voice=v; u.rate=1; u.pitch=1;
+  const u=new SpeechSynthesisUtterance(text); u.lang="de-DE"; const v=ttsVoice(); if(v) u.voice=v; u.rate=settings().rate; u.pitch=1;
   u.onend=()=>setSpeakBtn(btn,false); u.onerror=()=>setSpeakBtn(btn,false);
   speechSynthesis.speak(u); setSpeakBtn(btn,true);
 }
@@ -224,7 +225,7 @@ function revealLearn(sess,card,chosen){
      ${optionMarkup(card,chosen)}<div class="erk"><b>Erlaeuterung.</b> ${esc(card.erklaerung)}</div>
      ${TTS?`<button class="btn ghost" id="speak" style="margin-bottom:10px">\uD83D\uDD0A Erlaeuterung vorlesen</button>`:``}
      <div class="btnrow"><button class="btn bad" id="again">Nochmal</button><button class="btn good" id="got">Gewusst</button></div></div>`;
-  if(TTS){ const sb=document.getElementById("speak"); sb.onclick=()=>speak(card.erklaerung, sb); }
+  if(TTS){ const sb=document.getElementById("speak"); sb.onclick=()=>speak(card.erklaerung, sb); if(settings().autoRead) speak(card.erklaerung, sb); }
   const adv=(good)=>{ stopSpeak(); schedule(card.id,good); if(sess.i<n-1){sess.i++;renderQuestion(sess);} else sessionDone(sess); };
   document.getElementById("got").onclick=()=>adv(ok); document.getElementById("again").onclick=()=>adv(false);
 }
@@ -263,13 +264,36 @@ function flashMenu(){
       el.innerHTML=`<h3>${idx+1}. ${esc(f)}</h3><p>folgt – Karten noch nicht eingespielt</p>`; }
     fc.appendChild(el); });
 }
+function ttsPanelHTML(){
+  if(!TTS) return "";
+  const s=settings();
+  return `<div class="qcard" style="padding:16px;margin-top:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-weight:600">Antworten automatisch vorlesen</span>
+      <div class="chips" style="margin:0"><div class="chip${s.autoRead?' on':''}" id="ar-on">Ja</div><div class="chip${s.autoRead?'':' on'}" id="ar-off">Nein</div></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:14px;color:var(--muted)"><span>Vorlese-Geschwindigkeit</span><b id="rate-val" style="color:var(--rose-d)">${s.rate.toFixed(1)}&times;</b></div>
+    <input type="range" id="rate" min="0.6" max="1.6" step="0.1" value="${s.rate}" style="width:100%;accent-color:var(--rose)">
+    <p class="footer-note" style="margin-top:8px;text-align:left">Bei „Nein" liest die App nur auf Tippen des Vorlese-Buttons vor.</p>
+  </div>`;
+}
+function wireTtsPanel(){
+  if(!TTS) return;
+  const s=settings();
+  const on=document.getElementById("ar-on"), off=document.getElementById("ar-off");
+  const set=(v)=>{ s.autoRead=v; save(); on.classList.toggle("on",v); off.classList.toggle("on",!v); };
+  if(on) on.onclick=()=>set(true); if(off) off.onclick=()=>set(false);
+  const r=document.getElementById("rate"), rv=document.getElementById("rate-val");
+  if(r) r.oninput=()=>{ s.rate=parseFloat(r.value); rv.innerHTML=s.rate.toFixed(1)+"&times;"; save(); };
+}
 function flashOrderChoice(feld){
   const cards=LERNKARTEN.filter(k=>k.feld===feld);
   app.innerHTML=`<h2>${esc(feld)}</h2><p class="sub">${cards.length} Karten &middot; ${dueCount(cards)} heute faellig. Wie moechtest du lernen?</p>
    <div class="grid">
      <div class="tile" id="seq"><div class="ico">🔢</div><h3>Der Reihe nach</h3><p>Karten 1 bis ${cards.length} in fester Reihenfolge.</p></div>
      <div class="tile" id="rnd"><div class="ico">🔀</div><h3>Zufaellig</h3><p>Karten in zufaelliger Reihenfolge.</p></div>
-   </div>`;
+   </div>`+ttsPanelHTML();
+  wireTtsPanel();
   document.getElementById("seq").onclick=()=>startFlash(cards.slice().sort((a,b)=>a.nr-b.nr),feld);
   document.getElementById("rnd").onclick=()=>startFlash(shuffle(cards.slice()),feld);
 }
@@ -286,7 +310,7 @@ function flashReveal(sess,card){
   const n=sess.order.length;
   document.getElementById("ans").innerHTML=`<div class="antwort">${esc(card.antwort)}</div>`+(TTS?`<button class="btn ghost" id="speak" style="margin-bottom:12px">\uD83D\uDD0A Vorlesen</button>`:``);
   document.getElementById("controls").innerHTML=`<button class="btn bad" id="again">Nochmal</button><button class="btn good" id="got">Gewusst</button>`;
-  if(TTS){ const sb=document.getElementById("speak"); sb.onclick=()=>speak(card.antwort, sb); }
+  if(TTS){ const sb=document.getElementById("speak"); sb.onclick=()=>speak(card.antwort, sb); if(settings().autoRead) speak(card.antwort, sb); }
   const adv=(good)=>{ stopSpeak(); schedule(card.id,good); if(sess.i<n-1){sess.i++;renderFlash(sess);} else flashDone(sess); };
   document.getElementById("got").onclick=()=>adv(true); document.getElementById("again").onclick=()=>adv(false);
 }
@@ -304,7 +328,9 @@ function statsView(){
       <div class="stat"><b>${state.correct}</b><span>richtig</span></div><div class="stat"><b>${rate}%</b><span>Quote</span></div></div>
     <p class="sub">${KARTEN.length} Pruefungsfragen + ${LERNKARTEN.length} Lernkarten = ${all.length} Karten insgesamt.</p>
     <h2 style="font-size:17px">Karteikasten (alle Karten)</h2><div class="boxbars" id="bb"></div>
+    ${ttsPanelHTML()}
     <button class="link" id="reset">Fortschritt zuruecksetzen</button>`;
+  wireTtsPanel();
   const bb=document.getElementById("bb"), total=all.length;
   for(let b=1;b<=5;b++){ const w=Math.round(boxes[b]/total*100); const el=document.createElement("div"); el.className="boxbar";
     el.innerHTML=`<span class="lbl">Fach ${b}</span><span class="track"><i style="width:${w}%"></i></span><span>${boxes[b]}</span>`; bb.appendChild(el); }
