@@ -273,9 +273,9 @@ function revealLearn(sess,card,chosen){
      <div class="result"><span class="big ${ok?'ok':'no'}">${ok?'✓ Richtig':'✗ Nicht ganz'}</span><div class="sub">Loesung: ${card.loesung.join(" und ")}</div></div>
      ${optionMarkup(card,chosen)}<div class="erk"><b>Erlaeuterung.</b> ${esc(card.erklaerung)}</div>
      ${relHTML(card,"Passende Lernkarten:")}
-     ${TTS?`<button class="btn ghost" id="speak" style="margin-bottom:10px">\uD83D\uDD0A Erlaeuterung vorlesen</button>`:``}
+     ${TTS?`<button class="btn ghost" id="speak" style="margin-bottom:10px">\uD83D\uDD0A Frage & Erlaeuterung vorlesen</button>`:``}
      <div class="btnrow"><button class="btn bad" id="again">Nochmal</button><button class="btn good" id="got">Gewusst</button></div></div>`;
-  if(TTS){ const sb=document.getElementById("speak"); sb.onclick=()=>speak(card.erklaerung, sb); if(settings().autoRead) speak(card.erklaerung, sb); }
+  if(TTS){ const sb=document.getElementById("speak"); const txt=card.frage+" "+card.erklaerung; sb.onclick=()=>speak(txt, sb); if(settings().autoRead) speak(txt, sb); }
   wireRel(card);
   const adv=(good)=>{ stopSpeak(); schedule(card.id,good); markWrong(card.id,!good); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderQuestion)(sess);} else (sess.mixed?learnDone:sessionDone)(sess); };
   document.getElementById("got").onclick=()=>adv(ok); document.getElementById("again").onclick=()=>adv(false);
@@ -371,7 +371,7 @@ function flashReveal(sess,card){
   const myBox=my?`<div class="qcard" style="padding:12px;margin-bottom:10px;background:#faf6f2"><b style="font-size:12px;color:var(--muted)">DEINE ANTWORT</b><br>${esc(my)}</div>`:"";
   document.getElementById("ans").innerHTML=myBox+`<div class="antwort">${esc(card.antwort)}</div>`+(TTS?`<button class="btn ghost" id="speak" style="margin-bottom:12px">\uD83D\uDD0A Vorlesen</button>`:``)+relHTML(card,"Passende Pruefungsfragen:");
   document.getElementById("controls").innerHTML=`<button class="btn bad" id="g0" style="font-size:14px">Nicht gewusst</button><button class="btn" id="g1" style="background:var(--amber);color:#fff;font-size:14px">Unsicher</button><button class="btn good" id="g2" style="font-size:14px">Sicher</button>`;
-  if(TTS){ const sb=document.getElementById("speak"); sb.onclick=()=>speak(card.antwort, sb); if(settings().autoRead) speak(card.antwort, sb); }
+  if(TTS){ const sb=document.getElementById("speak"); const txt=card.frage+" "+card.antwort; sb.onclick=()=>speak(txt, sb); if(settings().autoRead) speak(txt, sb); }
   const advG=(grade)=>{ stopSpeak(); scheduleGrade(card.id,grade); markWrong(card.id,grade===0); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderFlash)(sess);} else (sess.mixed?learnDone:flashDone)(sess); };
   document.getElementById("g0").onclick=()=>advG(0); document.getElementById("g1").onclick=()=>advG(1); document.getElementById("g2").onclick=()=>advG(2);
   wireRel(card);
