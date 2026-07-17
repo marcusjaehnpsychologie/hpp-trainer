@@ -138,8 +138,9 @@ function schedule(id, ok){ const c=cardState(id); c.box=ok?Math.min(5,c.box+1):1
 const app=document.getElementById("app"), backBtn=document.getElementById("backBtn"), hTitle=document.getElementById("hTitle");
 const DEF_TITLE="HP-Psychotherapie · Pruefungstrainer";
 let current=null, hist=[];
+let audioList=[], audioI=0, audioPlaying=false;
 backBtn.onclick=()=>{ const p=hist.pop(); if(p) nav(p.view,p.title,true); };
-function nav(view,title,isBack){ if(!isBack&&current) hist.push(current); current={view,title}; hTitle.textContent=title||DEF_TITLE; backBtn.classList.toggle("hidden",hist.length===0); window.scrollTo(0,0); view(); }
+function nav(view,title,isBack){ if('speechSynthesis' in window) speechSynthesis.cancel(); audioPlaying=false; if(!isBack&&current) hist.push(current); current={view,title}; hTitle.textContent=title||DEF_TITLE; backBtn.classList.toggle("hidden",hist.length===0); window.scrollTo(0,0); view(); }
 function goHome(){ hist=[]; current=null; nav(home,"",true); }
 
 function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
@@ -161,6 +162,41 @@ function speak(text, btn){
 }
 
 /* ---------------- Startseite (zwei Bereiche) ---------------- */
+function todaysAudioSet(){
+  const wd=(new Date()).getDay();
+  if(wd===0) return {title:"Pruefungsfragen (Sonntag)", cards:shuffle(KARTEN.slice()).slice(0,28)};
+  const feld=FELDER[wd-1];
+  return {title:"Teil "+wd+" \u2013 "+feld, cards:LERNKARTEN.filter(k=>k.feld===feld).slice().sort((a,b)=>a.nr-b.nr)};
+}
+function cardAudioText(c){ return c.kind==="flash" ? ("Frage: "+c.frage+" Antwort: "+c.antwort) : ("Frage: "+c.frage+" Antwort: "+c.erklaerung); }
+function setAudioBtn(on){ const b=document.getElementById("au-play"); if(b) b.textContent = on ? "\u23F8 Pause" : "\u25B6 Abspielen"; }
+function audioSpeakCurrent(){
+  if(audioI>=audioList.length){ audioFinish(); return; }
+  const c=audioList[audioI];
+  const p=document.getElementById("au-pos"); if(p) p.textContent="Karte "+(audioI+1)+" / "+audioList.length;
+  const fr=document.getElementById("au-frage"); if(fr) fr.textContent=c.frage;
+  const ae=document.getElementById("au-ant"); if(ae){ ae.style.display="block"; ae.textContent=(c.kind==="flash"?c.antwort:c.erklaerung); }
+  const bar=document.getElementById("au-bar"); if(bar) bar.style.width=Math.round(audioI/audioList.length*100)+"%";
+  const u=new SpeechSynthesisUtterance(cardAudioText(c)); u.lang="de-DE"; const v=ttsVoice(); if(v) u.voice=v; u.rate=settings().rate; u.pitch=1;
+  u.onend=()=>{ if(!audioPlaying) return; audioI++; audioSpeakCurrent(); };
+  speechSynthesis.speak(u);
+}
+function audioPlay(){ if(!TTS) return; if(audioPlaying){ audioPlaying=false; setAudioBtn(false); speechSynthesis.cancel(); return; } audioPlaying=true; setAudioBtn(true); speechSynthesis.cancel(); audioSpeakCurrent(); }
+function audioStop(){ audioPlaying=false; if(TTS) speechSynthesis.cancel(); audioI=0; setAudioBtn(false);
+  const p=document.getElementById("au-pos"); if(p) p.textContent="Gestoppt"; const bar=document.getElementById("au-bar"); if(bar) bar.style.width="0%"; }
+function audioFinish(){ audioPlaying=false; setAudioBtn(false); const p=document.getElementById("au-pos"); if(p) p.textContent="Fertig \uD83C\uDF89"; const bar=document.getElementById("au-bar"); if(bar) bar.style.width="100%"; }
+function audioView(){
+  const set=todaysAudioSet(); audioList=set.cards; audioI=0; audioPlaying=false;
+  if(!TTS){ app.innerHTML=`<h2>\uD83C\uDFA7 Tages-Audio</h2><p class="sub">Auf diesem Geraet ist keine Sprachausgabe verfuegbar.</p><button class="btn ghost" id="h">Zurueck</button>`; document.getElementById("h").onclick=()=>{ const p=hist.pop(); if(p) nav(p.view,p.title,true); }; return; }
+  app.innerHTML=`<h2>\uD83C\uDFA7 Tages-Audio</h2>
+    <p class="sub">${esc(set.title)} &middot; ${set.cards.length} Karten. Frage und Antwort werden ohne Unterbrechung hintereinander vorgelesen.</p>
+    <div class="progress" style="margin-bottom:12px"><i id="au-bar" style="width:0%"></i></div>
+    <div class="qcard"><div class="counter" id="au-pos">Bereit</div><p class="frage" id="au-frage">Zum Starten auf \u201eAbspielen\u201c tippen.</p><div class="antwort" id="au-ant" style="display:none"></div></div>
+    <div class="btnrow"><button class="btn ghost" id="au-stop">Stopp</button><button class="btn primary" id="au-play">\u25B6 Abspielen</button></div>
+    <p class="footer-note">Tempo folgt dem Geschwindigkeitsregler in den Einstellungen. Hinweis: iOS pausiert die Sprachausgabe, wenn der Bildschirm gesperrt wird \u2013 am besten Display anlassen.</p>`;
+  document.getElementById("au-play").onclick=audioPlay;
+  document.getElementById("au-stop").onclick=audioStop;
+}
 function examDays(){ const n=new Date(); const t=new Date(n.getFullYear(),n.getMonth(),n.getDate()); return Math.round((EXAM - t)/86400000); }
 const WD_LANG=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 const WD_KURZ=["Mo","Di","Mi","Do","Fr","Sa"];
@@ -177,6 +213,7 @@ function planCard(){
     <div style="font-size:14px;color:var(--rose-d);font-weight:600">\uD83D\uDCC5 ${cd}</div>
     ${task}
     ${dueT?`<button class="btn ghost" id="plan-due" style="margin-top:8px">Heute faellige Wiederholungen (${dueT})</button>`:``}
+    <button class="btn blue" id="plan-audio" style="margin-top:8px">\uD83C\uDFA7 Heute als Audio anhoeren</button>
   </div>`;
 }
 function wirePlan(){
@@ -186,6 +223,8 @@ function wirePlan(){
           else go.onclick=()=>nav(()=>flashOrderChoice(FELDER[wd-1]), FELDER[wd-1]); }
   const du=document.getElementById("plan-due");
   if(du) du.onclick=()=>startLearn(dueFirst(KARTEN.concat(LERNKARTEN).filter(k=>cardState(k.id).due<=today())),"Heute dran");
+  const au=document.getElementById("plan-audio");
+  if(au) au.onclick=()=>nav(audioView,"Tages-Audio");
 }
 function weekOverview(){
   const wd=(new Date()).getDay();
