@@ -109,6 +109,26 @@ function bumpDaily(){ const d=today(); state.streak=state.streak||{count:0,lastD
   if(!state.daily||state.daily.day!==d) state.daily={day:d,count:0}; state.daily.count++; save(); }
 function todayCount(){ return (state.daily&&state.daily.day===today())?state.daily.count:0; }
 function displayStreak(){ const s=state.streak; if(!s||s.lastDay==null) return 0; return (s.lastDay===today()||s.lastDay===today()-1)?s.count:0; }
+function scheduleGrade(id, grade){ const c=cardState(id);
+  if(grade>=2) c.box=Math.min(5,c.box+1); else if(grade<=0) c.box=1;
+  c.due=today()+(grade===1?1:BOX_DAYS[c.box]); c.seen++;
+  state.answered++; if(grade>=2) state.correct++; save(); }
+function masteryRows(cards, key){
+  const g={}; cards.forEach(c=>{ (g[c[key]]=g[c[key]]||[]).push(c); });
+  return Object.keys(g).map(name=>{ const arr=g[name]; const m=arr.filter(c=>cardState(c.id).box>=4).length;
+    return {name, pct:Math.round(m/arr.length*100), cards:arr}; }).sort((a,b)=>a.pct-b.pct);
+}
+function fillRadar(id, rows){
+  const el=document.getElementById(id); if(!el) return;
+  if(!rows.length){ el.innerHTML=`<p class="sub">Noch keine Karten in diesem Bereich.</p>`; return; }
+  el.innerHTML="";
+  rows.forEach((r,i)=>{ const col=r.pct<40?"var(--red)":r.pct<70?"var(--amber)":"var(--green)";
+    const d=document.createElement("div"); d.style.marginBottom="10px";
+    d.innerHTML=`<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px"><span>${esc(r.name)}</span><span>${r.pct}% sitzt &middot; <button class="link" id="${id}_${i}" style="padding:0;font-size:13px">ueben</button></span></div><div class="progress"><i style="width:${r.pct}%;background:${col}"></i></div>`;
+    el.appendChild(d);
+    const b=document.getElementById(`${id}_${i}`); if(b) b.onclick=()=>{ const weak=r.cards.filter(c=>cardState(c.id).box<=2); startLearn(dueFirst(weak.length?weak:r.cards.slice()), r.name); };
+  });
+}
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 function cardState(id){ if(!state.cards[id]) state.cards[id]={box:1,due:0,seen:0}; return state.cards[id]; }
 function today(){ return Math.floor(Date.now()/86400000); }
@@ -331,10 +351,10 @@ function renderFlash(sess){ stopSpeak();
 function flashReveal(sess,card){
   const n=sess.order.length;
   document.getElementById("ans").innerHTML=`<div class="antwort">${esc(card.antwort)}</div>`+(TTS?`<button class="btn ghost" id="speak" style="margin-bottom:12px">\uD83D\uDD0A Vorlesen</button>`:``);
-  document.getElementById("controls").innerHTML=`<button class="btn bad" id="again">Nochmal</button><button class="btn good" id="got">Gewusst</button>`;
+  document.getElementById("controls").innerHTML=`<button class="btn bad" id="g0" style="font-size:14px">Nicht gewusst</button><button class="btn" id="g1" style="background:var(--amber);color:#fff;font-size:14px">Unsicher</button><button class="btn good" id="g2" style="font-size:14px">Sicher</button>`;
   if(TTS){ const sb=document.getElementById("speak"); sb.onclick=()=>speak(card.antwort, sb); if(settings().autoRead) speak(card.antwort, sb); }
-  const adv=(good)=>{ stopSpeak(); schedule(card.id,good); markWrong(card.id,!good); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderFlash)(sess);} else (sess.mixed?learnDone:flashDone)(sess); };
-  document.getElementById("got").onclick=()=>adv(true); document.getElementById("again").onclick=()=>adv(false);
+  const advG=(grade)=>{ stopSpeak(); scheduleGrade(card.id,grade); markWrong(card.id,grade===0); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderFlash)(sess);} else (sess.mixed?learnDone:flashDone)(sess); };
+  document.getElementById("g0").onclick=()=>advG(0); document.getElementById("g1").onclick=()=>advG(1); document.getElementById("g2").onclick=()=>advG(2);
 }
 function flashDone(sess){ app.innerHTML=`<h2>Runde geschafft 🎉</h2><p class="sub">Alle ${sess.order.length} Lernkarten bearbeitet.</p>
    <div class="grid"><button class="btn blue" id="again">Weiter lernen</button><button class="btn ghost" id="home">Startseite</button></div>`;
@@ -350,9 +370,15 @@ function statsView(){
       <div class="stat"><b>${state.correct}</b><span>richtig</span></div><div class="stat"><b>${rate}%</b><span>Quote</span></div></div>
     <p class="sub">${KARTEN.length} Pruefungsfragen + ${LERNKARTEN.length} Lernkarten = ${all.length} Karten insgesamt.</p>
     <h2 style="font-size:17px">Karteikasten (alle Karten)</h2><div class="boxbars" id="bb"></div>
+    <h2 style="font-size:17px">Schwaechenradar &ndash; Pruefungsfragen</h2><div id="radar-mc"></div>
+    <h2 style="font-size:17px">Schwaechenradar &ndash; Lernkarten</h2><div id="radar-fl"></div>
+    <button class="btn primary" id="weakall" style="margin:6px 0 18px">Nur meine Schwaechen ueben</button>
     ${ttsPanelHTML()}
     <button class="link" id="reset">Fortschritt zuruecksetzen</button>`;
   wireTtsPanel();
+  fillRadar("radar-mc", masteryRows(KARTEN,"thema"));
+  fillRadar("radar-fl", masteryRows(LERNKARTEN,"feld"));
+  document.getElementById("weakall").onclick=()=>{ const w=all.filter(c=>cardState(c.id).box<=2); startLearn(dueFirst(w),"Schwaechen ueben"); };
   const bb=document.getElementById("bb"), total=all.length;
   for(let b=1;b<=5;b++){ const w=Math.round(boxes[b]/total*100); const el=document.createElement("div"); el.className="boxbar";
     el.innerHTML=`<span class="lbl">Fach ${b}</span><span class="track"><i style="width:${w}%"></i></span><span>${boxes[b]}</span>`; bb.appendChild(el); }
