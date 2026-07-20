@@ -101,7 +101,7 @@ const STORE_KEY = "hpp_trainer_full_v1";
 const BOX_DAYS = {1:0,2:1,3:3,4:7,5:16};
 let state = load();
 function load(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY)) || fresh(); }catch(e){ return fresh(); } }
-function fresh(){ return {cards:{}, answered:0, correct:0, wrong:{}, daily:null, streak:{count:0,lastDay:null}, sims:[], settings:{rate:1, autoRead:false, dailyGoal:30, selfCheck:false}}; }
+function fresh(){ return {cards:{}, answered:0, correct:0, wrong:{}, daily:null, streak:{count:0,lastDay:null}, sims:[], notes:{}, hard:{}, settings:{rate:1, autoRead:false, dailyGoal:30, selfCheck:false}}; }
 function settings(){ if(!state.settings) state.settings={rate:1, autoRead:false, dailyGoal:30, selfCheck:false}; if(state.settings.selfCheck==null) state.settings.selfCheck=false; if(state.settings.dailyGoal==null) state.settings.dailyGoal=30; return state.settings; }
 function markWrong(id,w){ state.wrong=state.wrong||{}; if(w) state.wrong[id]=1; else delete state.wrong[id]; save(); }
 function wrongCards(){ const w=state.wrong||{}; return KARTEN.concat(LERNKARTEN).filter(c=>w[c.id]); }
@@ -283,6 +283,7 @@ function home(){
    <div class="grid">
      <div class="big-tile" style="border-left:5px solid var(--amber)" id="go-due"><div class="ico">📌</div><div><h3>Heute dran</h3><p>${dueT} faellige Karten – gemischt lernen (Spaced-Repetition)</p></div></div>
      ${wrongN?`<div class="big-tile" style="border-left:5px solid var(--red)" id="go-wrong"><div class="ico">🔁</div><div><h3>Fehlerstapel</h3><p>${wrongN} zuletzt falsche Karten wiederholen</p></div></div>`:``}
+     ${hardCards().length?`<div class="big-tile" style="border-left:5px solid var(--amber)" id="go-hard"><div class="ico">\u2B50</div><div><h3>Meine schweren Karten</h3><p>${hardCards().length} selbst markierte Karten wiederholen</p></div></div>`:``}
      <div class="big-tile mc" id="go-mc"><div class="ico">📝</div><div><h3>Pruefungsfragen</h3><p>${KARTEN.length} MC-Fragen · ${dueCount(KARTEN)} faellig</p></div></div>
      <div class="big-tile fl" id="go-fl"><div class="ico">🃏</div><div><h3>Lernkarten</h3><p>${LERNKARTEN.length} Karten · ${dueCount(LERNKARTEN)} faellig</p></div></div>
      <div class="tile" id="go-ready"><div class="ico">🎯</div><h3>Pruefungsreife</h3><p>${readiness().pct}% &middot; Bestehensgrenze 75 %</p></div>
@@ -293,10 +294,42 @@ function home(){
   const gw=document.getElementById("go-wrong"); if(gw) gw.onclick=()=>startLearn(dueFirst(wrongCards()),"Fehlerstapel");
   document.getElementById("go-mc").onclick=()=>nav(mcMenu,"Pruefungsfragen");
   document.getElementById("go-fl").onclick=()=>nav(flashMenu,"Lernkarten");
+  const gh=document.getElementById("go-hard"); if(gh) gh.onclick=()=>startLearn(dueFirst(hardCards()),"Meine schweren Karten");
   document.getElementById("go-ready").onclick=()=>nav(readinessView,"Pruefungsreife");
   document.getElementById("go-stats").onclick=()=>nav(statsView,"Statistik");
 }
-function findCard(id){ return KARTEN.find(c=>c.id===id) || LERNKARTEN.find(c=>c.id===id) || null; }
+function findCard(id){ const s=String(id); return KARTEN.find(c=>String(c.id)===s) || LERNKARTEN.find(c=>String(c.id)===s) || null; }
+function nKey(id){ return String(id); }
+function getNote(id){ return (state.notes||{})[nKey(id)] || ""; }
+function setNote(id,t){ state.notes=state.notes||{}; if(t&&t.trim()) state.notes[nKey(id)]=t; else delete state.notes[nKey(id)]; save(); }
+function isHard(id){ return !!(state.hard||{})[nKey(id)]; }
+function toggleHard(id){ state.hard=state.hard||{}; const k=nKey(id); if(state.hard[k]) delete state.hard[k]; else state.hard[k]=1; save(); return !!state.hard[k]; }
+function hardCards(){ const h=state.hard||{}; return KARTEN.concat(LERNKARTEN).filter(c=>h[nKey(c.id)]); }
+function notesPanelHTML(card){
+  const h=isHard(card.id), n=esc(getNote(card.id));
+  return `<div class="qcard" style="padding:12px;margin-bottom:12px">
+    <div class="chips" style="margin:0 0 8px"><div class="chip${h?' on':''}" id="np-hard">${h?'\u2605 Als schwer markiert':'\u2606 Als schwer markieren'}</div></div>
+    <textarea id="np-note" placeholder="Eigene Eselsbruecke / Notiz zu dieser Karte \u2026" style="width:100%;min-height:60px;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;font-family:inherit">${n}</textarea>
+    <div class="footer-note" style="text-align:left;margin-top:4px" id="np-status">Notiz wird automatisch gespeichert.</div>
+  </div>`;
+}
+function wireNotesPanel(card){
+  const hb=document.getElementById("np-hard");
+  if(hb) hb.onclick=()=>{ const v=toggleHard(card.id); hb.classList.toggle("on",v); hb.textContent=v?"\u2605 Als schwer markiert":"\u2606 Als schwer markieren"; };
+  const nt=document.getElementById("np-note");
+  if(nt) nt.oninput=()=>{ setNote(card.id, nt.value); const s=document.getElementById("np-status"); if(s) s.textContent="Notiz gespeichert \u2713"; };
+}
+function notesView(){
+  const notes=state.notes||{};
+  const ids=Object.keys(notes).filter(id=>(notes[id]||"").trim());
+  app.innerHTML=`<h2>\uD83D\uDCDD Meine Notizen</h2><p class="sub">${ids.length} Karten mit eigener Eselsbruecke.</p><div id="nv"></div>`;
+  const c=document.getElementById("nv");
+  if(!ids.length){ c.innerHTML=`<p class="sub">Noch keine Notizen. Beim Aufdecken einer Karte kannst du eine eigene Merkhilfe hinterlegen.</p>`; return; }
+  ids.forEach((id,i)=>{ const card=findCard(id); if(!card) return;
+    const d=document.createElement("div"); d.className="qcard";
+    d.innerHTML=`<p class="frage" style="font-size:15px">${esc(card.frage)}</p><div class="erk">${esc(notes[id])}</div><button class="link" id="nv_${i}" style="padding:4px 0">Karte oeffnen</button>`;
+    c.appendChild(d); const b=document.getElementById("nv_"+i); if(b) b.onclick=()=>openCard(card.id); });
+}
 function trimTxt(s,n){ s=s||""; return s.length>n? s.slice(0,n).trim()+"\u2026" : s; }
 function relHTML(card,label){ if(!card||!card.rel||!card.rel.length) return "";
   const items=card.rel.map((id,i)=>{ const c=findCard(id); return c?`<button class="link" id="rel_${i}" style="display:block;text-align:left;padding:3px 0;font-size:13.5px">\u2192 ${esc(trimTxt(c.frage,80))}</button>`:""; }).join("");
@@ -383,10 +416,11 @@ function revealLearn(sess,card,chosen){
      <div class="result"><span class="big ${ok?'ok':'no'}">${ok?'✓ Richtig':'✗ Nicht ganz'}</span><div class="sub">Loesung: ${card.loesung.join(" und ")}</div></div>
      ${optionMarkup(card,chosen)}<div class="erk"><b>Erlaeuterung.</b> ${esc(card.erklaerung)}</div>
      ${relHTML(card,"Passende Lernkarten:")}
+     ${notesPanelHTML(card)}
      ${TTS?`<button class="btn ghost" id="speak" style="margin-bottom:10px">\uD83D\uDD0A Frage & Erlaeuterung vorlesen</button>`:``}
      <div class="btnrow"><button class="btn bad" id="again">Nochmal</button><button class="btn good" id="got">Gewusst</button></div></div>`;
   if(TTS){ const sb=document.getElementById("speak"); const txt=card.frage+" "+card.erklaerung; sb.onclick=()=>speak(txt, sb); if(settings().autoRead) speak(txt, sb); }
-  wireRel(card);
+  wireRel(card); wireNotesPanel(card);
   const adv=(good)=>{ stopSpeak(); schedule(card.id,good); markWrong(card.id,!good); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderQuestion)(sess);} else (sess.mixed?learnDone:sessionDone)(sess); };
   document.getElementById("got").onclick=()=>adv(ok); document.getElementById("again").onclick=()=>adv(false);
 }
@@ -481,12 +515,12 @@ function flashReveal(sess,card){
   const n=sess.order.length;
   const ta=document.getElementById("selfans"); const my=ta?ta.value.trim():""; if(ta) ta.style.display="none";
   const myBox=my?`<div class="qcard" style="padding:12px;margin-bottom:10px;background:#faf6f2"><b style="font-size:12px;color:var(--muted)">DEINE ANTWORT</b><br>${esc(my)}</div>`:"";
-  document.getElementById("ans").innerHTML=myBox+`<div class="antwort">${esc(card.antwort)}</div>`+(TTS?`<button class="btn ghost" id="speak" style="margin-bottom:12px">\uD83D\uDD0A Vorlesen</button>`:``)+relHTML(card,"Passende Pruefungsfragen:");
+  document.getElementById("ans").innerHTML=myBox+`<div class="antwort">${esc(card.antwort)}</div>`+(TTS?`<button class="btn ghost" id="speak" style="margin-bottom:12px">\uD83D\uDD0A Vorlesen</button>`:``)+relHTML(card,"Passende Pruefungsfragen:")+notesPanelHTML(card);
   document.getElementById("controls").innerHTML=`<button class="btn bad" id="g0" style="font-size:14px">Nicht gewusst</button><button class="btn" id="g1" style="background:var(--amber);color:#fff;font-size:14px">Unsicher</button><button class="btn good" id="g2" style="font-size:14px">Sicher</button>`;
   if(TTS){ const sb=document.getElementById("speak"); const txt=card.frage+" "+card.antwort; sb.onclick=()=>speak(txt, sb); if(settings().autoRead) speak(txt, sb); }
   const advG=(grade)=>{ stopSpeak(); scheduleGrade(card.id,grade); markWrong(card.id,grade===0); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderFlash)(sess);} else (sess.mixed?learnDone:flashDone)(sess); };
   document.getElementById("g0").onclick=()=>advG(0); document.getElementById("g1").onclick=()=>advG(1); document.getElementById("g2").onclick=()=>advG(2);
-  wireRel(card);
+  wireRel(card); wireNotesPanel(card);
 }
 function flashDone(sess){ app.innerHTML=`<h2>Runde geschafft 🎉</h2><p class="sub">Alle ${sess.order.length} Lernkarten bearbeitet.</p>
    <div class="grid"><button class="btn blue" id="again">Weiter lernen</button><button class="btn ghost" id="home">Startseite</button></div>`;
@@ -506,6 +540,7 @@ function statsView(){
     <h2 style="font-size:17px">Schwaechenradar &ndash; Lernkarten</h2><div id="radar-fl"></div>
     <button class="btn primary" id="weakall" style="margin:6px 0 18px">Nur meine Schwaechen ueben</button>
     ${ttsPanelHTML()}
+    <button class="link" id="go-notes" style="display:block">Meine Notizen ansehen</button>
     <button class="link" id="reset">Fortschritt zuruecksetzen</button>`;
   wireTtsPanel();
   fillRadar("radar-mc", masteryRows(KARTEN,"thema"));
@@ -514,6 +549,7 @@ function statsView(){
   const bb=document.getElementById("bb"), total=all.length;
   for(let b=1;b<=5;b++){ const w=Math.round(boxes[b]/total*100); const el=document.createElement("div"); el.className="boxbar";
     el.innerHTML=`<span class="lbl">Fach ${b}</span><span class="track"><i style="width:${w}%"></i></span><span>${boxes[b]}</span>`; bb.appendChild(el); }
+  const gn=document.getElementById("go-notes"); if(gn) gn.onclick=()=>nav(notesView,"Meine Notizen");
   document.getElementById("reset").onclick=()=>{ if(confirm("Gesamten Lernfortschritt wirklich loeschen?")){ state=fresh(); save(); statsView(); } };
 }
 
