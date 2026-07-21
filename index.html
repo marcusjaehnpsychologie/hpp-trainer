@@ -58,6 +58,15 @@
   .erk{background:#fbf7f2;border:1px solid var(--line);border-radius:12px;padding:14px;font-size:14.5px;margin:6px 0 12px}
   .erk b{color:var(--rose-d)}
   .antwort{background:var(--blue-bg);border:1px solid #cfdbe4;border-radius:12px;padding:16px;font-size:15.5px;margin:6px 0 14px;white-space:pre-line}
+  .antwort.mkon{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;cursor:crosshair}
+  .mkw{border-radius:3px}
+  .mkw.m{background:#ffe870;box-shadow:0 0 0 2px #ffe870}
+  .mkw.b{font-weight:700}
+  .mkbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 0}
+  .mkbar .chip{padding:6px 12px;font-size:13px}
+  .mkbar .chip.mkm.on{background:#ffe870;color:#3a3a3a;border-color:#e8cf4e}
+  .mkbar .chip.mkb.on{background:#4a4a4a;color:#fff;border-color:#4a4a4a}
+  .mkbar .chip.mkx.on{background:var(--muted);color:#fff;border-color:var(--muted)}
   .btnrow{display:flex;gap:10px;margin-top:6px}
   .btn{flex:1;border:0;border-radius:12px;padding:14px;font-size:16px;font-weight:600;cursor:pointer}
   .btn.primary{background:var(--rose);color:#fff}
@@ -341,7 +350,7 @@ function mergeState(local, remote){
   const out=JSON.parse(JSON.stringify(local));
   const rc=remote.cards||{}; out.cards=out.cards||{};
   Object.keys(rc).forEach(id=>{ const a=out.cards[id], b=rc[id]; if(!a || (b.ts||0)>(a.ts||0)) out.cards[id]=b; });
-  ["notes","hard","wrong"].forEach(key=>{ const r=remote[key]||{}; out[key]=out[key]||{};
+  ["notes","hard","wrong","marks"].forEach(key=>{ const r=remote[key]||{}; out[key]=out[key]||{};
     Object.keys(r).forEach(id=>{ const a=out[key][id], b=r[id];
       if(!a || (((b&&b.ts)||0) > ((a&&a.ts)||0))) out[key][id]=b; }); });
   const mx=(a,b)=>[Math.max(a[0]||0,b[0]||0),Math.max(a[1]||0,b[1]||0),Math.max(a[2]||0,b[2]||0)];
@@ -568,7 +577,7 @@ function reverseAnswer(sess, chosen){
   app.innerHTML=`<div class="counter">Karte ${sess.i+1} / ${n}</div>
    <div class="qcard"><div class="meta"><span class="badge fl">${esc(card.feld)}</span></div>
      <div class="result"><span class="big ${ok?'ok':'no'}">${ok?'\u2713 Richtig':'\u2717 Nicht ganz'}</span></div>
-     <div class="antwort">${esc(card.antwort)}</div>
+     ${antwortHTML(card,true)}${markBarHTML()}
      ${rows}
      <div class="erk"><b>Urspruengliche Frage:</b> ${esc(card.frage)}</div>
      ${notesPanelHTML(card)}
@@ -631,6 +640,95 @@ function setNote(id,t){ state.notes=state.notes||{}; state.notes[nKey(id)]={t:(t
 function isHard(id){ const e=(state.hard||{})[nKey(id)]; return !!(e&&e.v); }
 function toggleHard(id){ state.hard=state.hard||{}; const k=nKey(id); const v=isHard(id)?0:1; state.hard[k]={v:v, ts:Date.now()}; save(); return !!v; }
 function hardCards(){ const h=state.hard||{}; return KARTEN.concat(LERNKARTEN).filter(c=>{ const e=h[nKey(c.id)]; return e&&e.v; }); }
+/* ---------------- Markierungen im Antworttext ---------------- */
+function mkKey(id){ return String(id); }
+function mkTokens(t){ return (t||"").split(/(\s+)/); }
+function mkCount(t){ var n=0; mkTokens(t).forEach(function(p){ if(p && !/^\s+$/.test(p)) n++; }); return n; }
+function getMarks(id, txt){
+  var e=(state.marks||{})[mkKey(id)];
+  if(!e || e.len!==mkCount(txt)) return {b:[], m:[]};
+  return {b:(e.b||[]).slice(), m:(e.m||[]).slice()};
+}
+function setMarks(id, txt, mk){
+  state.marks=state.marks||{};
+  var num=function(a,b){ return a-b; };
+  state.marks[mkKey(id)]={ b:(mk.b||[]).slice().sort(num), m:(mk.m||[]).slice().sort(num),
+                           len:mkCount(txt), ts:Date.now() };
+  save();
+}
+function hasMarks(id, txt){ var m=getMarks(id,txt); return !!(m.b.length||m.m.length); }
+function antwortHTML(card, markable){
+  var txt=card.antwort||"", mk=getMarks(card.id, txt), bS={}, mS={}, i=-1;
+  mk.b.forEach(function(x){ bS[x]=1; }); mk.m.forEach(function(x){ mS[x]=1; });
+  var inner=mkTokens(txt).map(function(p){
+    if(!p) return "";
+    if(/^\s+$/.test(p)) return esc(p);
+    i++;
+    var c="mkw"; if(mS[i]) c+=" m"; if(bS[i]) c+=" b";
+    return '<span class="'+c+'" data-w="'+i+'">'+esc(p)+'</span>';
+  }).join("");
+  return '<div class="antwort"'+(markable?' id="mkbox"':'')+'>'+inner+'</div>';
+}
+function markBarHTML(){
+  return '<div class="mkbar" id="mkbar">'
+       + '<div class="chip mkm" data-mk="m">\uD83D\uDD8D Marker</div>'
+       + '<div class="chip mkb" data-mk="b">B Fett</div>'
+       + '<div class="chip mkx" data-mk="x">Radierer</div>'
+       + '<span class="footer-note" id="mk-hint" style="margin:0;text-align:left">Modus waehlen, dann ueber die Woerter streichen.</span>'
+       + '</div>';
+}
+function wireMarks(card){
+  var box=document.getElementById("mkbox"), bar=document.getElementById("mkbar");
+  if(!box || !bar) return;
+  var txt=card.antwort||"", mode=null, down=false, op=1;
+  var hint=document.getElementById("mk-hint");
+  var chips=Array.prototype.slice.call(bar.getElementsByClassName("chip"));
+  function say(t){ if(hint) hint.textContent=t; }
+  function setMode(m){
+    mode=(mode===m)?null:m;
+    chips.forEach(function(c){ c.classList.toggle("on", c.getAttribute("data-mk")===mode); });
+    box.classList.toggle("mkon", !!mode);
+    if(!mode) say("Modus waehlen, dann ueber die Woerter streichen.");
+    else if(mode==="x") say("Ueber Markierungen streichen loescht sie.");
+    else say("Ueber die Woerter streichen. Nochmal streichen hebt auf.");
+  }
+  chips.forEach(function(c){ c.onclick=function(){ setMode(c.getAttribute("data-mk")); }; });
+  function wordAt(x,y){
+    var el=document.elementFromPoint(x,y);
+    return (el && el.className && String(el.className).indexOf("mkw")>=0 && box.contains(el)) ? el : null;
+  }
+  function apply(el){
+    if(!el || !mode) return;
+    if(mode==="x"){ el.classList.remove("m"); el.classList.remove("b"); return; }
+    var cls=(mode==="m")?"m":"b";
+    if(op) el.classList.add(cls); else el.classList.remove(cls);
+  }
+  function persist(){
+    var b=[], m=[], all=box.getElementsByClassName("mkw");
+    for(var k=0;k<all.length;k++){
+      var el=all[k], i=parseInt(el.getAttribute("data-w"),10);
+      if(el.classList.contains("m")) m.push(i);
+      if(el.classList.contains("b")) b.push(i);
+    }
+    setMarks(card.id, txt, {b:b, m:m});
+    say((m.length||b.length) ? "Markierung gespeichert \u2713" : "Markierungen entfernt \u2713");
+  }
+  box.addEventListener("pointerdown", function(e){
+    if(!mode) return;
+    var el=wordAt(e.clientX, e.clientY); if(!el) return;
+    e.preventDefault(); down=true;
+    op = (mode==="x") ? 0 : (el.classList.contains(mode==="m"?"m":"b") ? 0 : 1);
+    apply(el);
+    try{ if(box.setPointerCapture) box.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  box.addEventListener("pointermove", function(e){
+    if(!down || !mode) return;
+    e.preventDefault(); apply(wordAt(e.clientX, e.clientY));
+  });
+  function end(){ if(!down) return; down=false; persist(); }
+  box.addEventListener("pointerup", end);
+  box.addEventListener("pointercancel", end);
+}
 function notesPanelHTML(card){
   const h=isHard(card.id), n=esc(getNote(card.id));
   return `<div class="qcard" style="padding:12px;margin-bottom:12px">
@@ -640,6 +738,7 @@ function notesPanelHTML(card){
   </div>`;
 }
 function wireNotesPanel(card){
+  wireMarks(card);
   const hb=document.getElementById("np-hard");
   if(hb) hb.onclick=()=>{ const v=toggleHard(card.id); hb.classList.toggle("on",v); hb.textContent=v?"\u2605 Als schwer markiert":"\u2606 Als schwer markieren"; };
   const nt=document.getElementById("np-note");
@@ -842,7 +941,7 @@ function flashReveal(sess,card){
   const n=sess.order.length;
   const ta=document.getElementById("selfans"); const my=ta?ta.value.trim():""; if(ta) ta.style.display="none";
   const myBox=my?`<div class="qcard" style="padding:12px;margin-bottom:10px;background:#faf6f2"><b style="font-size:12px;color:var(--muted)">DEINE ANTWORT</b><br>${esc(my)}</div>`:"";
-  document.getElementById("ans").innerHTML=myBox+`<div class="antwort">${esc(card.antwort)}</div>`+(TTS?`<button class="btn ghost" id="speak" style="margin-bottom:12px">\uD83D\uDD0A Vorlesen</button>`:``)+relHTML(card,"Passende Pruefungsfragen:")+notesPanelHTML(card);
+  document.getElementById("ans").innerHTML=myBox+antwortHTML(card,true)+markBarHTML()+(TTS?`<button class="btn ghost" id="speak" style="margin-bottom:12px">\uD83D\uDD0A Vorlesen</button>`:``)+relHTML(card,"Passende Pruefungsfragen:")+notesPanelHTML(card);
   document.getElementById("controls").innerHTML=`<button class="btn bad" id="g0" style="font-size:14px">Nicht gewusst</button><button class="btn" id="g1" style="background:var(--amber);color:#fff;font-size:14px">Unsicher</button><button class="btn good" id="g2" style="font-size:14px">Sicher</button>`;
   if(TTS){ const sb=document.getElementById("speak"); const txt=card.frage+" "+card.antwort; sb.onclick=()=>speak(txt, sb); if(settings().autoRead) speak(txt, sb); }
   const advG=(grade)=>{ stopSpeak(); scheduleGrade(card.id,grade); markWrong(card.id,grade===0); logAnswer(card,grade); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderFlash)(sess);} else (sess.mixed?learnDone:flashDone)(sess); };
