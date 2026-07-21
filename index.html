@@ -443,6 +443,64 @@ function syncView(){
   document.getElementById("sy-imp").onclick=()=>f.click();
   f.onchange=()=>{ if(f.files&&f.files[0]) importBackup(f.files[0]); };
 }
+const VERWECHSLUNG=[
+ {name:"Demenz \u2013 Delir \u2013 depressive Pseudodemenz", subs:[
+   {l:"Demenz", k:["demenz","alzheimer"]},{l:"Delir", k:["delir"]},{l:"Pseudodemenz", k:["pseudodemenz","depression im alter"]}]},
+ {name:"Schizophrenie \u2013 schizoaffektiv \u2013 wahnhafte St\u00f6rung", subs:[
+   {l:"Schizophrenie", k:["schizophren","hebephren","katatone"]},{l:"Schizoaffektiv", k:["schizoaffekt"]},{l:"Wahnhafte St\u00f6rung", k:["wahnhafte st\u00f6rung","paranoide st\u00f6rung","wahn"]}]},
+ {name:"Angst \u2013 Panik \u2013 Phobie \u2013 Zwang", subs:[
+   {l:"Panikst\u00f6rung", k:["panik"]},{l:"Phobie", k:["phobie","agoraph"]},{l:"Generalisierte Angst", k:["generalisiert"]},{l:"Zwang", k:["zwang"]}]},
+ {name:"Pers\u00f6nlichkeitsst\u00f6rungen (Cluster B)", subs:[
+   {l:"Borderline", k:["borderline","emotional instabil"]},{l:"Histrionisch", k:["histrion"]},{l:"Narzisstisch", k:["narziss"]},{l:"Dissozial", k:["dissozial","antisozial"]}]},
+ {name:"Affektive St\u00f6rungen", subs:[
+   {l:"Depression", k:["depress"]},{l:"Manie", k:["manie","manisch"]},{l:"Bipolar", k:["bipolar"]},{l:"Dysthymie/Zyklothymie", k:["dysthym","zyklothym"]}]},
+ {name:"Essst\u00f6rungen", subs:[
+   {l:"Anorexie", k:["anorex","magersucht"]},{l:"Bulimie", k:["bulim"]},{l:"Binge-Eating", k:["binge"]}]},
+ {name:"Belastungs- und Traumafolgest\u00f6rungen", subs:[
+   {l:"Akute Belastungsreaktion", k:["akute belastungs"]},{l:"PTBS", k:["ptbs","posttraumat"]},{l:"Anpassungsst\u00f6rung", k:["anpassungsst\u00f6r"]}]},
+ {name:"Somatoforme \u0026 dissoziative St\u00f6rungen", subs:[
+   {l:"Somatisierung", k:["somatisier","somatoform"]},{l:"Hypochondrie", k:["hypochond"]},{l:"Dissoziativ/Konversion", k:["dissoziativ","konversi"]}]},
+ {name:"Suchterkrankungen", subs:[
+   {l:"Abh\u00e4ngigkeitssyndrom", k:["abh\u00e4ngigkeitssyndrom","abh\u00e4ngig"]},{l:"Sch\u00e4dlicher Gebrauch", k:["sch\u00e4dlicher gebrauch"]},{l:"Entzug", k:["entzug"]},{l:"Delirium tremens", k:["delirium tremens"]}]},
+ {name:"Recht \u0026 Berufskunde", subs:[
+   {l:"Unterbringung", k:["unterbring","psychkg"]},{l:"Betreuung", k:["betreuung"]},{l:"Gesch\u00e4ftsf\u00e4higkeit", k:["gesch\u00e4ftsf\u00e4hig"]},{l:"Schweigepflicht", k:["schweigepflicht"]}]}
+];
+function cardSearchText(c){
+  return ((c.kind==="flash") ? c.frage
+        : (c.frage+" "+(c.optionen||[]).map(o=>o.text).join(" "))).toLowerCase();
+}
+function confusionBuckets(g){
+  const pool=KARTEN.concat(LERNKARTEN);
+  const buckets=g.subs.map(()=>[]);
+  pool.forEach(c=>{ const t=cardSearchText(c); let best=-1, bestLen=0;
+    g.subs.forEach((s,i)=>{ s.k.forEach(k=>{ if(t.indexOf(k)>=0 && k.length>bestLen){ bestLen=k.length; best=i; } }); });
+    if(best>=0) buckets[best].push(c); });
+  buckets.forEach(b=>{ shuffle(b); b.sort((x,y)=>cardState(x.id).box-cardState(y.id).box); });
+  return buckets;
+}
+function confusionStats(g){ const b=confusionBuckets(g); let n=0,w=0;
+  b.forEach(x=>x.forEach(c=>{ n++; if(cardState(c.id).box<=2) w++; })); return {n:n, weak:w, buckets:b}; }
+function buildConfusion(g, cap){
+  const buckets=confusionBuckets(g); const out=[]; const lim=cap||30; let i=0;
+  while(out.length<lim){ let added=false;
+    for(let j=0;j<buckets.length;j++){ const c=buckets[j][i];
+      if(c){ out.push(c); added=true; if(out.length>=lim) break; } }
+    if(!added) break; i++; }
+  return out;
+}
+function confusionView(){
+  app.innerHTML=`<h2>\uD83D\uDD00 Verwechslungs-Trainer</h2>
+   <p class="sub">Gemischtes Ueben aehnlicher Stoerungsbilder \u2013 genau die Unterscheidungen, die in der Pruefung gefragt werden. Je Runde 30 Karten im Wechsel, schwache zuerst.</p>
+   <div class="grid" id="cf"></div>`;
+  const c=document.getElementById("cf");
+  VERWECHSLUNG.forEach((g,i)=>{ const s=confusionStats(g);
+    const el=document.createElement("div"); el.className="tile";
+    const subs=g.subs.map(x=>x.l).join(" \u00b7 ");
+    el.innerHTML=`<h3>${esc(g.name)}</h3><p>${s.n} Karten \u00b7 ${s.weak} noch schwach<br><span style="font-size:12.5px">${esc(subs)}</span></p>`;
+    if(s.n>0) el.onclick=()=>startLearn(buildConfusion(g,30), g.name);
+    else { el.style.opacity=".5"; el.style.cursor="default"; }
+    c.appendChild(el); });
+}
 function home(){
   const rate=state.answered?Math.round(state.correct/state.answered*100):0;
   const dueT=dueCount(KARTEN)+dueCount(LERNKARTEN), wrongN=wrongCards().length;
@@ -464,6 +522,7 @@ function home(){
      <div class="big-tile mc" id="go-mc"><div class="ico">📝</div><div><h3>Pruefungsfragen</h3><p>${KARTEN.length} MC-Fragen · ${dueCount(KARTEN)} faellig</p></div></div>
      <div class="big-tile fl" id="go-fl"><div class="ico">🃏</div><div><h3>Lernkarten</h3><p>${LERNKARTEN.length} Karten · ${dueCount(LERNKARTEN)} faellig</p></div></div>
      <div class="tile" id="go-ready"><div class="ico">🎯</div><h3>Pruefungsreife</h3><p>${readiness().pct}% &middot; Bestehensgrenze 75 %</p></div>
+     <div class="tile" id="go-conf"><div class="ico">🔀</div><h3>Verwechslungs-Trainer</h3><p>Aehnliche Stoerungsbilder im Wechsel ueben</p></div>
      <div class="tile" id="go-count"><div class="ico">📈</div><h3>Lernzaehler</h3><p>Heute ${(function(){const t=todayLog();let n=0;Object.keys(t).forEach(k=>{const a=sumDev(t[k]);n+=a[0]+a[1]+a[2];});return n;})()} Karten &middot; Tages- und Gesamtstatistik</p></div>
      <div class="tile" id="go-stats"><div class="ico">📊</div><h3>Statistik</h3><p>Trefferquote ${rate}% · Karteikasten · Einstellungen</p></div>
    </div>${weekOverview()}`;
@@ -473,6 +532,7 @@ function home(){
   document.getElementById("go-mc").onclick=()=>nav(mcMenu,"Pruefungsfragen");
   document.getElementById("go-fl").onclick=()=>nav(flashMenu,"Lernkarten");
   const gh=document.getElementById("go-hard"); if(gh) gh.onclick=()=>startLearn(dueFirst(hardCards()),"Meine schweren Karten");
+  document.getElementById("go-conf").onclick=()=>nav(confusionView,"Verwechslungs-Trainer");
   document.getElementById("go-count").onclick=()=>nav(counterView,"Lernzaehler");
   document.getElementById("go-ready").onclick=()=>nav(readinessView,"Pruefungsreife");
   document.getElementById("go-stats").onclick=()=>nav(statsView,"Statistik");
