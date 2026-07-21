@@ -501,6 +501,91 @@ function confusionView(){
     else { el.style.opacity=".5"; el.style.cursor="default"; }
     c.appendChild(el); });
 }
+function begriffOf(c){
+  let t=(c.frage||"").trim();
+  const cut=t.search(/[?!]/); if(cut>0) t=t.slice(0,cut);           // nur der erste Fragesatz
+  t=t.replace(/^(Was ist\s*(eine|ein|der|die|das)?\s*|Was sind\s*(die)?\s*|Was versteht man unter\s*(der|dem|die|den|einer|einem|einen)?\s*|Was verstehen Sie unter\s*(der|dem|die|den|einer|einem|einen)?\s*|Was kennzeichnet\s*(eine|ein|einen|den|die|das)?\s*|Was bedeutet\s*(der Begriff)?\s*|Erkl(ä|ae)ren Sie\s*(den Begriff|die|das|der|den)?\s*|Definieren Sie\s*(den Begriff)?\s*(der|die|das|den)?\s*|Worin besteh(t|en)\s*(eine|ein|der|die|das)?\s*|Erl(ä|ae)utern Sie\s*(die|das|den)?\s*|Nennen Sie\s+|Wie funktioniert\s*(die|das|der)?\s*|Wie lassen sich\s+|Wie werden\s+|Welche(s|r|n)?\s+)/i,"");
+  t=t.replace(/[?!.,;:]+$/,"").trim();
+  t=t.replace(/\s+(kennen Sie|kennt man|trifft zu|treffen zu|gibt es|behandelt|unterschieden|definiert|therapiert|diagnostiziert|angewendet|eingesetzt|z(ä|ae)hlt sie|z(ä|ae)hlen sie|passen|vor)$/i,"").trim();
+  t=t.replace(/[?!.,;:]+$/,"").trim();
+  return t? t.charAt(0).toUpperCase()+t.slice(1) : (c.frage||"");
+}
+function isCleanBegriff(c){
+  const b=begriffOf(c);
+  if(!b) return false;
+  if(b.length<3 || b.length>60) return false;
+  if(b.indexOf("?")>=0) return false;
+  if(b.split(/\s+/).length>8) return false;
+  return true;
+}
+function reverseItem(card, pool){
+  const others=shuffle(pool.filter(x=>x.id!==card.id));
+  const seen={}; seen[begriffOf(card).toLowerCase()]=1; const picked=[];
+  for(let i=0;i<others.length && picked.length<3;i++){
+    const b=begriffOf(others[i]).toLowerCase();
+    if(seen[b]) continue; seen[b]=1; picked.push(others[i]); }
+  return shuffle([card].concat(picked));
+}
+function reverseMenu(){
+  app.innerHTML=`<h2>\uD83D\uDD01 Umgekehrt abfragen</h2>
+   <p class="sub">Du siehst die Beschreibung und waehlst aus vier Begriffen den richtigen \u2013 die Richtung, die in Pruefungsfaellen gefragt wird. 20 Karten je Runde, schwache zuerst.</p>
+   <div class="grid" id="rv"></div>`;
+  const c=document.getElementById("rv");
+  FELDER.forEach((f,i)=>{ const n=LERNKARTEN.filter(k=>k.feld===f && isCleanBegriff(k)).length;
+    const el=document.createElement("div"); el.className="tile";
+    el.innerHTML=`<h3>${i+1}. ${esc(f)}</h3><p>${n?n+" geeignete Karten":"folgt"}</p>`;
+    if(n>=4) el.onclick=()=>startReverse(f); else { el.style.opacity=".55"; el.style.cursor="default"; }
+    c.appendChild(el); });
+}
+function startReverse(feld){
+  const pool=LERNKARTEN.filter(k=>k.feld===feld && isCleanBegriff(k));
+  const order=shuffle(pool.slice()).sort((a,b)=>cardState(a.id).box-cardState(b.id).box).slice(0,20);
+  nav(()=>renderReverse({order:order, i:0, feld:feld, pool:pool, correct:0}), "Umgekehrt: "+feld);
+}
+function renderReverse(sess){
+  stopSpeak();
+  const card=sess.order[sess.i], n=sess.order.length, pct=Math.round(sess.i/n*100);
+  sess.cur=reverseItem(card, sess.pool);
+  app.innerHTML=`<div class="counter">Karte ${sess.i+1} / ${n}</div><div class="progress"><i style="width:${pct}%"></i></div>
+   <div class="qcard"><div class="meta"><span class="badge fl">${esc(card.feld)}</span><span class="badge fl">Umgekehrt</span></div>
+     <p class="hint" style="margin-bottom:8px">Welcher Begriff wird hier beschrieben?</p>
+     <div class="antwort">${esc(card.antwort)}</div>
+     <div id="rv-opts"></div></div>`;
+  const box=document.getElementById("rv-opts");
+  sess.cur.forEach((o,idx)=>{ const el=document.createElement("div"); el.className="opt";
+    el.innerHTML=`<span class="k">${String.fromCharCode(65+idx)}</span><span class="txt">${esc(begriffOf(o))}</span>`;
+    el.onclick=()=>reverseAnswer(sess,o); box.appendChild(el); });
+}
+function reverseAnswer(sess, chosen){
+  const card=sess.order[sess.i], n=sess.order.length;
+  const ok=(String(chosen.id)===String(card.id));
+  if(ok) sess.correct++;
+  scheduleGrade(card.id, ok?2:0); markWrong(card.id, !ok); logAnswer(card, ok?2:0); bumpDaily();
+  const rows=sess.cur.map((o,idx)=>{ let cls="opt";
+    if(String(o.id)===String(card.id)) cls+=" correct";
+    else if(o===chosen) cls+=" wrong";
+    return `<div class="${cls}"><span class="k">${String.fromCharCode(65+idx)}</span><span class="txt">${esc(begriffOf(o))}</span></div>`; }).join("");
+  app.innerHTML=`<div class="counter">Karte ${sess.i+1} / ${n}</div>
+   <div class="qcard"><div class="meta"><span class="badge fl">${esc(card.feld)}</span></div>
+     <div class="result"><span class="big ${ok?'ok':'no'}">${ok?'\u2713 Richtig':'\u2717 Nicht ganz'}</span></div>
+     <div class="antwort">${esc(card.antwort)}</div>
+     ${rows}
+     <div class="erk"><b>Urspruengliche Frage:</b> ${esc(card.frage)}</div>
+     ${notesPanelHTML(card)}
+     <div class="btnrow"><button class="btn primary" id="rv-next">${sess.i<n-1?'Weiter':'Auswerten'}</button></div></div>`;
+  wireNotesPanel(card);
+  document.getElementById("rv-next").onclick=()=>{ if(sess.i<n-1){ sess.i++; renderReverse(sess); } else reverseDone(sess); };
+}
+function reverseDone(sess){
+  autoSync();
+  const n=sess.order.length, pct=Math.round(sess.correct/n*100);
+  app.innerHTML=`<h2>Runde geschafft \uD83C\uDF89</h2>
+   <div class="result" style="margin:8px 0 14px"><span class="big ${pct>=75?'ok':'no'}">${sess.correct} / ${n} richtig (${pct}%)</span>
+     <div class="sub">${esc(sess.feld)}</div></div>
+   <div class="grid"><button class="btn primary" id="rv-again">Neue Runde</button><button class="btn ghost" id="rv-home">Startseite</button></div>`;
+  document.getElementById("rv-again").onclick=()=>startReverse(sess.feld);
+  document.getElementById("rv-home").onclick=goHome;
+}
 function home(){
   const rate=state.answered?Math.round(state.correct/state.answered*100):0;
   const dueT=dueCount(KARTEN)+dueCount(LERNKARTEN), wrongN=wrongCards().length;
@@ -522,6 +607,7 @@ function home(){
      <div class="big-tile mc" id="go-mc"><div class="ico">📝</div><div><h3>Pruefungsfragen</h3><p>${KARTEN.length} MC-Fragen · ${dueCount(KARTEN)} faellig</p></div></div>
      <div class="big-tile fl" id="go-fl"><div class="ico">🃏</div><div><h3>Lernkarten</h3><p>${LERNKARTEN.length} Karten · ${dueCount(LERNKARTEN)} faellig</p></div></div>
      <div class="tile" id="go-ready"><div class="ico">🎯</div><h3>Pruefungsreife</h3><p>${readiness().pct}% &middot; Bestehensgrenze 75 %</p></div>
+     <div class="tile" id="go-rev"><div class="ico">🔁</div><h3>Umgekehrt abfragen</h3><p>Beschreibung \u2192 Begriff (4 Auswahlmoeglichkeiten)</p></div>
      <div class="tile" id="go-conf"><div class="ico">🔀</div><h3>Verwechslungs-Trainer</h3><p>Aehnliche Stoerungsbilder im Wechsel ueben</p></div>
      <div class="tile" id="go-count"><div class="ico">📈</div><h3>Lernzaehler</h3><p>Heute ${(function(){const t=todayLog();let n=0;Object.keys(t).forEach(k=>{const a=sumDev(t[k]);n+=a[0]+a[1]+a[2];});return n;})()} Karten &middot; Tages- und Gesamtstatistik</p></div>
      <div class="tile" id="go-stats"><div class="ico">📊</div><h3>Statistik</h3><p>Trefferquote ${rate}% · Karteikasten · Einstellungen</p></div>
@@ -532,6 +618,7 @@ function home(){
   document.getElementById("go-mc").onclick=()=>nav(mcMenu,"Pruefungsfragen");
   document.getElementById("go-fl").onclick=()=>nav(flashMenu,"Lernkarten");
   const gh=document.getElementById("go-hard"); if(gh) gh.onclick=()=>startLearn(dueFirst(hardCards()),"Meine schweren Karten");
+  document.getElementById("go-rev").onclick=()=>nav(reverseMenu,"Umgekehrt abfragen");
   document.getElementById("go-conf").onclick=()=>nav(confusionView,"Verwechslungs-Trainer");
   document.getElementById("go-count").onclick=()=>nav(counterView,"Lernzaehler");
   document.getElementById("go-ready").onclick=()=>nav(readinessView,"Pruefungsreife");
