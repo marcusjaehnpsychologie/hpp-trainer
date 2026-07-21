@@ -101,7 +101,7 @@ const STORE_KEY = "hpp_trainer_full_v1";
 const BOX_DAYS = {1:0,2:1,3:3,4:7,5:16};
 let state = load();
 function load(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY)) || fresh(); }catch(e){ return fresh(); } }
-function fresh(){ return {cards:{}, answered:0, correct:0, wrong:{}, daily:null, streak:{count:0,lastDay:null}, sims:[], notes:{}, hard:{}, settings:{rate:1, autoRead:false, dailyGoal:30, selfCheck:false}}; }
+function fresh(){ return {cards:{}, answered:0, correct:0, wrong:{}, daily:null, streak:{count:0,lastDay:null}, sims:[], notes:{}, hard:{}, log:{}, totals:{}, settings:{rate:1, autoRead:false, dailyGoal:30, selfCheck:false}}; }
 function settings(){ if(!state.settings) state.settings={rate:1, autoRead:false, dailyGoal:30, selfCheck:false}; if(state.settings.selfCheck==null) state.settings.selfCheck=false; if(state.settings.dailyGoal==null) state.settings.dailyGoal=30; return state.settings; }
 function markWrong(id,w){ state.wrong=state.wrong||{}; if(w) state.wrong[id]=1; else delete state.wrong[id]; save(); }
 function wrongCards(){ const w=state.wrong||{}; return KARTEN.concat(LERNKARTEN).filter(c=>w[c.id]); }
@@ -266,6 +266,60 @@ function readinessView(){
     if(!cards.length) risk.forEach(x=>{ cards=cards.concat(x.cards); });
     startLearn(dueFirst(cards),"Risiko-Gebiete"); };
 }
+function cardGroup(c){ return c.kind==="flash" ? c.feld : "Pruefungsfragen"; }
+function groupsList(){ return FELDER.concat(["Pruefungsfragen"]); }
+function groupCards(g){ return g==="Pruefungsfragen" ? KARTEN : LERNKARTEN.filter(c=>c.feld===g); }
+function logAnswer(card, grade){
+  const g=cardGroup(card), d=String(today());
+  state.log=state.log||{}; state.log[d]=state.log[d]||{}; state.log[d][g]=state.log[d][g]||[0,0,0];
+  state.log[d][g][grade]++;
+  state.totals=state.totals||{}; state.totals[g]=state.totals[g]||[0,0,0]; state.totals[g][grade]++;
+  const keys=Object.keys(state.log).map(Number).sort((a,b)=>a-b);
+  if(keys.length>60) keys.slice(0,keys.length-60).forEach(k=>delete state.log[String(k)]);
+  save();
+}
+function todayLog(){ return (state.log||{})[String(today())]||{}; }
+function gradeBar(a){ const t=(a[0]+a[1]+a[2])||1;
+  return `<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--sand-2)">
+    <div style="width:${a[2]/t*100}%;background:var(--green)"></div>
+    <div style="width:${a[1]/t*100}%;background:var(--amber)"></div>
+    <div style="width:${a[0]/t*100}%;background:var(--red)"></div></div>`; }
+function counterView(){
+  const tl=todayLog(), groups=groupsList();
+  let heute="", s=[0,0,0];
+  groups.forEach(g=>{ const a=tl[g]; if(!a) return; s[0]+=a[0]; s[1]+=a[1]; s[2]+=a[2];
+    const t=a[0]+a[1]+a[2];
+    heute+=`<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px"><span>${esc(g)}</span><b>${t} Karten</b></div>${gradeBar(a)}
+      <div class="sub" style="margin:4px 0 0;font-size:12.5px">\u2713 gewusst ${a[2]} &middot; ~ unsicher ${a[1]} &middot; \u2717 nicht gewusst ${a[0]}</div></div>`; });
+  const tT=s[0]+s[1]+s[2];
+  let ges="", gA=[0,0,0], gTouch=0, gFest=0, gAll=0;
+  groups.forEach(g=>{ const cards=groupCards(g); const tot=(state.totals||{})[g]||[0,0,0];
+    const st=state.cards||{};
+    const touched=cards.filter(c=>((st[c.id]||{}).seen||0)>0).length;
+    const fest=cards.filter(c=>((st[c.id]||{}).box||1)>=4).length;
+    gA[0]+=tot[0]; gA[1]+=tot[1]; gA[2]+=tot[2]; gTouch+=touched; gFest+=fest; gAll+=cards.length;
+    ges+=`<div class="qcard" style="padding:12px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:600"><span>${esc(g)}</span><span>${touched}/${cards.length}</span></div>
+      <div class="sub" style="margin:2px 0 6px;font-size:12.5px">bearbeitet ${Math.round(touched/cards.length*100)} % &middot; gefestigt ${fest} (${Math.round(fest/cards.length*100)} %) &middot; Antworten ${tot[0]+tot[1]+tot[2]}</div>
+      ${gradeBar(tot)}</div>`; });
+  const gT=gA[0]+gA[1]+gA[2];
+  app.innerHTML=`<h2>\uD83D\uDCC8 Lernzaehler</h2>
+   <h2 style="font-size:17px;margin-top:14px">Heute</h2>
+   ${tT?`<div class="qcard" style="padding:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px"><span>Heute insgesamt</span><b>${tT} Karten</b></div>
+      ${gradeBar(s)}<div class="sub" style="margin:6px 0 14px;font-size:12.5px">\u2713 ${s[2]} &middot; ~ ${s[1]} &middot; \u2717 ${s[0]} &middot; Quote ${Math.round(s[2]/tT*100)} % gewusst</div>
+      ${heute}</div>`
+    :`<p class="sub">Heute noch keine Karten bearbeitet.</p>`}
+   <h2 style="font-size:17px;margin-top:18px">Gesamt</h2>
+   <div class="qcard" style="padding:14px;margin-bottom:12px">
+     <div style="display:flex;justify-content:space-between"><span>Bearbeitete Karten</span><b>${gTouch} / ${gAll}</b></div>
+     <div class="progress" style="margin:6px 0 10px"><i style="width:${Math.round(gTouch/gAll*100)}%"></i></div>
+     <div style="display:flex;justify-content:space-between"><span>Davon gefestigt (Fach 4\u20135)</span><b>${gFest}</b></div>
+     <div class="sub" style="margin-top:8px;font-size:12.5px">Antworten gesamt: ${gT} &middot; \u2713 ${gA[2]} &middot; ~ ${gA[1]} &middot; \u2717 ${gA[0]}${gT?` &middot; Quote ${Math.round(gA[2]/gT*100)} %`:``}</div>
+     ${gT?gradeBar(gA):``}
+   </div>
+   ${ges}`;
+}
 function home(){
   const rate=state.answered?Math.round(state.correct/state.answered*100):0;
   const dueT=dueCount(KARTEN)+dueCount(LERNKARTEN), wrongN=wrongCards().length;
@@ -287,6 +341,7 @@ function home(){
      <div class="big-tile mc" id="go-mc"><div class="ico">📝</div><div><h3>Pruefungsfragen</h3><p>${KARTEN.length} MC-Fragen · ${dueCount(KARTEN)} faellig</p></div></div>
      <div class="big-tile fl" id="go-fl"><div class="ico">🃏</div><div><h3>Lernkarten</h3><p>${LERNKARTEN.length} Karten · ${dueCount(LERNKARTEN)} faellig</p></div></div>
      <div class="tile" id="go-ready"><div class="ico">🎯</div><h3>Pruefungsreife</h3><p>${readiness().pct}% &middot; Bestehensgrenze 75 %</p></div>
+     <div class="tile" id="go-count"><div class="ico">📈</div><h3>Lernzaehler</h3><p>Heute ${(function(){const t=todayLog();let n=0;Object.keys(t).forEach(k=>{n+=t[k][0]+t[k][1]+t[k][2];});return n;})()} Karten &middot; Tages- und Gesamtstatistik</p></div>
      <div class="tile" id="go-stats"><div class="ico">📊</div><h3>Statistik</h3><p>Trefferquote ${rate}% · Karteikasten · Einstellungen</p></div>
    </div>${weekOverview()}`;
   wirePlan();
@@ -295,6 +350,7 @@ function home(){
   document.getElementById("go-mc").onclick=()=>nav(mcMenu,"Pruefungsfragen");
   document.getElementById("go-fl").onclick=()=>nav(flashMenu,"Lernkarten");
   const gh=document.getElementById("go-hard"); if(gh) gh.onclick=()=>startLearn(dueFirst(hardCards()),"Meine schweren Karten");
+  document.getElementById("go-count").onclick=()=>nav(counterView,"Lernzaehler");
   document.getElementById("go-ready").onclick=()=>nav(readinessView,"Pruefungsreife");
   document.getElementById("go-stats").onclick=()=>nav(statsView,"Statistik");
 }
@@ -421,7 +477,7 @@ function revealLearn(sess,card,chosen){
      <div class="btnrow"><button class="btn bad" id="again">Nochmal</button><button class="btn good" id="got">Gewusst</button></div></div>`;
   if(TTS){ const sb=document.getElementById("speak"); const txt=card.frage+" "+card.erklaerung; sb.onclick=()=>speak(txt, sb); if(settings().autoRead) speak(txt, sb); }
   wireRel(card); wireNotesPanel(card);
-  const adv=(good)=>{ stopSpeak(); schedule(card.id,good); markWrong(card.id,!good); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderQuestion)(sess);} else (sess.mixed?learnDone:sessionDone)(sess); };
+  const adv=(good)=>{ stopSpeak(); schedule(card.id,good); markWrong(card.id,!good); logAnswer(card,good?2:0); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderQuestion)(sess);} else (sess.mixed?learnDone:sessionDone)(sess); };
   document.getElementById("got").onclick=()=>adv(ok); document.getElementById("again").onclick=()=>adv(false);
 }
 function sessionDone(sess){ app.innerHTML=`<h2>Runde geschafft 🎉</h2><p class="sub">Alle ${sess.order.length} Karten bearbeitet.</p>
@@ -429,7 +485,7 @@ function sessionDone(sess){ app.innerHTML=`<h2>Runde geschafft 🎉</h2><p class
   document.getElementById("again").onclick=()=>startSession(dueFirst(KARTEN.slice()),"Lernmodus",false); document.getElementById("home").onclick=goHome; }
 function examResult(sess){
   let correct=0; const rows=sess.order.map(card=>{ const sol=new Set(card.loesung),ch=new Set(sess.answers[card.id]||[]);
-    const ok=sol.size===ch.size&&[...sol].every(k=>ch.has(k)); if(ok){correct++;schedule(card.id,true);markWrong(card.id,false);}else{schedule(card.id,false);markWrong(card.id,true);} bumpDaily(); return {card,ok,ch:[...ch]}; });
+    const ok=sol.size===ch.size&&[...sol].every(k=>ch.has(k)); if(ok){correct++;schedule(card.id,true);markWrong(card.id,false);}else{schedule(card.id,false);markWrong(card.id,true);} logAnswer(card,ok?2:0); bumpDaily(); return {card,ok,ch:[...ch]}; });
   const pct=Math.round(correct/sess.order.length*100), pass=pct>=75;
   state.sims=state.sims||[]; state.sims.push({d:today(), pct:pct, total:sess.order.length});
   if(state.sims.length>30) state.sims=state.sims.slice(-30); save();
@@ -518,7 +574,7 @@ function flashReveal(sess,card){
   document.getElementById("ans").innerHTML=myBox+`<div class="antwort">${esc(card.antwort)}</div>`+(TTS?`<button class="btn ghost" id="speak" style="margin-bottom:12px">\uD83D\uDD0A Vorlesen</button>`:``)+relHTML(card,"Passende Pruefungsfragen:")+notesPanelHTML(card);
   document.getElementById("controls").innerHTML=`<button class="btn bad" id="g0" style="font-size:14px">Nicht gewusst</button><button class="btn" id="g1" style="background:var(--amber);color:#fff;font-size:14px">Unsicher</button><button class="btn good" id="g2" style="font-size:14px">Sicher</button>`;
   if(TTS){ const sb=document.getElementById("speak"); const txt=card.frage+" "+card.antwort; sb.onclick=()=>speak(txt, sb); if(settings().autoRead) speak(txt, sb); }
-  const advG=(grade)=>{ stopSpeak(); scheduleGrade(card.id,grade); markWrong(card.id,grade===0); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderFlash)(sess);} else (sess.mixed?learnDone:flashDone)(sess); };
+  const advG=(grade)=>{ stopSpeak(); scheduleGrade(card.id,grade); markWrong(card.id,grade===0); logAnswer(card,grade); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderFlash)(sess);} else (sess.mixed?learnDone:flashDone)(sess); };
   document.getElementById("g0").onclick=()=>advG(0); document.getElementById("g1").onclick=()=>advG(1); document.getElementById("g2").onclick=()=>advG(2);
   wireRel(card); wireNotesPanel(card);
 }
