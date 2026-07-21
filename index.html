@@ -100,11 +100,24 @@ const EXAM = new Date(2026,9,14); // 14.10.2026
 const STORE_KEY = "hpp_trainer_full_v1";
 const BOX_DAYS = {1:0,2:1,3:3,4:7,5:16};
 let state = load();
+const SYNC_KEY="hpp_sync_cfg";
+function syncCfg(){ try{ return JSON.parse(localStorage.getItem(SYNC_KEY))||{}; }catch(e){ return {}; } }
+function setSyncCfg(c){ localStorage.setItem(SYNC_KEY, JSON.stringify(c)); }
+function migrate(){
+  state.dev = state.dev || ("d"+Math.random().toString(36).slice(2,10));
+  const n=state.notes||{}; Object.keys(n).forEach(k=>{ if(typeof n[k]==="string") n[k]={t:n[k], ts:0}; }); state.notes=n;
+  ["hard","wrong"].forEach(key=>{ const o=state[key]||{}; Object.keys(o).forEach(k=>{ if(typeof o[k]!=="object"||o[k]===null) o[k]={v:1,ts:0}; }); state[key]=o; });
+  const lg=state.log||{}; Object.keys(lg).forEach(d=>Object.keys(lg[d]).forEach(g=>{ if(Array.isArray(lg[d][g])){ const a=lg[d][g]; lg[d][g]={}; lg[d][g][state.dev]=a; } })); state.log=lg;
+  const tt=state.totals||{}; Object.keys(tt).forEach(g=>{ if(Array.isArray(tt[g])){ const a=tt[g]; tt[g]={}; tt[g][state.dev]=a; } }); state.totals=tt;
+  const cs=state.cards||{}; Object.keys(cs).forEach(k=>{ if(cs[k].ts==null) cs[k].ts=0; });
+  save();
+}
+migrate();
 function load(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY)) || fresh(); }catch(e){ return fresh(); } }
 function fresh(){ return {cards:{}, answered:0, correct:0, wrong:{}, daily:null, streak:{count:0,lastDay:null}, sims:[], notes:{}, hard:{}, log:{}, totals:{}, settings:{rate:1, autoRead:false, dailyGoal:30, selfCheck:false}}; }
 function settings(){ if(!state.settings) state.settings={rate:1, autoRead:false, dailyGoal:30, selfCheck:false}; if(state.settings.selfCheck==null) state.settings.selfCheck=false; if(state.settings.dailyGoal==null) state.settings.dailyGoal=30; return state.settings; }
-function markWrong(id,w){ state.wrong=state.wrong||{}; if(w) state.wrong[id]=1; else delete state.wrong[id]; save(); }
-function wrongCards(){ const w=state.wrong||{}; return KARTEN.concat(LERNKARTEN).filter(c=>w[c.id]); }
+function markWrong(id,w){ state.wrong=state.wrong||{}; state.wrong[String(id)]={v:w?1:0, ts:Date.now()}; save(); }
+function wrongCards(){ const w=state.wrong||{}; return KARTEN.concat(LERNKARTEN).filter(c=>{ const e=w[String(c.id)]; return e&&e.v; }); }
 function bumpDaily(){ const d=today(); state.streak=state.streak||{count:0,lastDay:null};
   if(state.streak.lastDay!==d){ state.streak.count=(state.streak.lastDay===d-1)?(state.streak.count+1):1; state.streak.lastDay=d; }
   if(!state.daily||state.daily.day!==d) state.daily={day:d,count:0}; state.daily.count++; save(); }
@@ -112,7 +125,7 @@ function todayCount(){ return (state.daily&&state.daily.day===today())?state.dai
 function displayStreak(){ const s=state.streak; if(!s||s.lastDay==null) return 0; return (s.lastDay===today()||s.lastDay===today()-1)?s.count:0; }
 function scheduleGrade(id, grade){ const c=cardState(id);
   if(grade>=2) c.box=Math.min(5,c.box+1); else if(grade<=0) c.box=1;
-  c.due=today()+(grade===1?1:BOX_DAYS[c.box]); c.seen++;
+  c.due=today()+(grade===1?1:BOX_DAYS[c.box]); c.seen++; c.ts=Date.now();
   state.answered++; if(grade>=2) state.correct++; save(); }
 function masteryRows(cards, key){
   const g={}; cards.forEach(c=>{ (g[c[key]]=g[c[key]]||[]).push(c); });
@@ -271,14 +284,17 @@ function groupsList(){ return FELDER.concat(["Pruefungsfragen"]); }
 function groupCards(g){ return g==="Pruefungsfragen" ? KARTEN : LERNKARTEN.filter(c=>c.feld===g); }
 function logAnswer(card, grade){
   const g=cardGroup(card), d=String(today());
-  state.log=state.log||{}; state.log[d]=state.log[d]||{}; state.log[d][g]=state.log[d][g]||[0,0,0];
-  state.log[d][g][grade]++;
-  state.totals=state.totals||{}; state.totals[g]=state.totals[g]||[0,0,0]; state.totals[g][grade]++;
+  const dv=state.dev;
+  state.log=state.log||{}; state.log[d]=state.log[d]||{}; state.log[d][g]=state.log[d][g]||{};
+  state.log[d][g][dv]=state.log[d][g][dv]||[0,0,0]; state.log[d][g][dv][grade]++;
+  state.totals=state.totals||{}; state.totals[g]=state.totals[g]||{};
+  state.totals[g][dv]=state.totals[g][dv]||[0,0,0]; state.totals[g][dv][grade]++;
   const keys=Object.keys(state.log).map(Number).sort((a,b)=>a-b);
   if(keys.length>60) keys.slice(0,keys.length-60).forEach(k=>delete state.log[String(k)]);
   save();
 }
 function todayLog(){ return (state.log||{})[String(today())]||{}; }
+function sumDev(o){ const r=[0,0,0]; if(!o) return r; Object.keys(o).forEach(d=>{ const a=o[d]||[0,0,0]; r[0]+=a[0]||0; r[1]+=a[1]||0; r[2]+=a[2]||0; }); return r; }
 function gradeBar(a){ const t=(a[0]+a[1]+a[2])||1;
   return `<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--sand-2)">
     <div style="width:${a[2]/t*100}%;background:var(--green)"></div>
@@ -287,13 +303,13 @@ function gradeBar(a){ const t=(a[0]+a[1]+a[2])||1;
 function counterView(){
   const tl=todayLog(), groups=groupsList();
   let heute="", s=[0,0,0];
-  groups.forEach(g=>{ const a=tl[g]; if(!a) return; s[0]+=a[0]; s[1]+=a[1]; s[2]+=a[2];
+  groups.forEach(g=>{ const a=sumDev(tl[g]); if(!(a[0]+a[1]+a[2])) return; s[0]+=a[0]; s[1]+=a[1]; s[2]+=a[2];
     const t=a[0]+a[1]+a[2];
     heute+=`<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px"><span>${esc(g)}</span><b>${t} Karten</b></div>${gradeBar(a)}
       <div class="sub" style="margin:4px 0 0;font-size:12.5px">\u2713 gewusst ${a[2]} &middot; ~ unsicher ${a[1]} &middot; \u2717 nicht gewusst ${a[0]}</div></div>`; });
   const tT=s[0]+s[1]+s[2];
   let ges="", gA=[0,0,0], gTouch=0, gFest=0, gAll=0;
-  groups.forEach(g=>{ const cards=groupCards(g); const tot=(state.totals||{})[g]||[0,0,0];
+  groups.forEach(g=>{ const cards=groupCards(g); const tot=sumDev((state.totals||{})[g]);
     const st=state.cards||{};
     const touched=cards.filter(c=>((st[c.id]||{}).seen||0)>0).length;
     const fest=cards.filter(c=>((st[c.id]||{}).box||1)>=4).length;
@@ -320,6 +336,113 @@ function counterView(){
    </div>
    ${ges}`;
 }
+function mergeState(local, remote){
+  if(!remote || typeof remote!=="object") return local;
+  const out=JSON.parse(JSON.stringify(local));
+  const rc=remote.cards||{}; out.cards=out.cards||{};
+  Object.keys(rc).forEach(id=>{ const a=out.cards[id], b=rc[id]; if(!a || (b.ts||0)>(a.ts||0)) out.cards[id]=b; });
+  ["notes","hard","wrong"].forEach(key=>{ const r=remote[key]||{}; out[key]=out[key]||{};
+    Object.keys(r).forEach(id=>{ const a=out[key][id], b=r[id];
+      if(!a || (((b&&b.ts)||0) > ((a&&a.ts)||0))) out[key][id]=b; }); });
+  const mx=(a,b)=>[Math.max(a[0]||0,b[0]||0),Math.max(a[1]||0,b[1]||0),Math.max(a[2]||0,b[2]||0)];
+  const rl=remote.log||{}; out.log=out.log||{};
+  Object.keys(rl).forEach(d=>{ out.log[d]=out.log[d]||{};
+    Object.keys(rl[d]).forEach(g=>{ out.log[d][g]=out.log[d][g]||{};
+      Object.keys(rl[d][g]).forEach(dev=>{ out.log[d][g][dev]=mx(out.log[d][g][dev]||[0,0,0], rl[d][g][dev]||[0,0,0]); }); }); });
+  const rt=remote.totals||{}; out.totals=out.totals||{};
+  Object.keys(rt).forEach(g=>{ out.totals[g]=out.totals[g]||{};
+    Object.keys(rt[g]).forEach(dev=>{ out.totals[g][dev]=mx(out.totals[g][dev]||[0,0,0], rt[g][dev]||[0,0,0]); }); });
+  const seen={}; const all=(out.sims||[]).concat(remote.sims||[]);
+  out.sims=all.filter(s=>{ const k=s.d+"|"+s.pct+"|"+(s.total||0); if(seen[k]) return false; seen[k]=1; return true; })
+              .sort((a,b)=>a.d-b.d).slice(-30);
+  const rs=remote.streak; if(rs && (rs.lastDay||-1) > ((out.streak&&out.streak.lastDay)||-1)) out.streak=rs;
+  const rd=remote.daily;
+  if(rd){ if(!out.daily || rd.day>out.daily.day) out.daily=rd;
+          else if(rd.day===out.daily.day) out.daily.count=Math.max(out.daily.count||0, rd.count||0); }
+  let ans=0, cor=0;
+  Object.keys(out.totals||{}).forEach(g=>Object.keys(out.totals[g]).forEach(dev=>{ const a=out.totals[g][dev]||[0,0,0]; ans+=a[0]+a[1]+a[2]; cor+=a[2]; }));
+  out.answered=Math.max(ans, out.answered||0); out.correct=Math.max(cor, out.correct||0);
+  return out;
+}
+const GIST_FILE="hpp-trainer-state.json";
+function ghHead(t){ return {"Authorization":"Bearer "+t, "Accept":"application/vnd.github+json"}; }
+async function gistFind(t){
+  const r=await fetch("https://api.github.com/gists?per_page=100",{headers:ghHead(t)});
+  if(!r.ok) throw new Error("GitHub "+r.status);
+  const l=await r.json(); const g=l.find(x=>x.files && x.files[GIST_FILE]); return g?g.id:null;
+}
+async function gistGet(t,id){
+  const r=await fetch("https://api.github.com/gists/"+id,{headers:ghHead(t)});
+  if(!r.ok) throw new Error("Laden "+r.status);
+  const g=await r.json(); const f=g.files&&g.files[GIST_FILE]; if(!f) return null;
+  let c=f.content; if(f.truncated&&f.raw_url){ const rr=await fetch(f.raw_url); c=await rr.text(); }
+  try{ return JSON.parse(c); }catch(e){ return null; }
+}
+async function gistSave(t,id,data){
+  const body={files:{}}; body.files[GIST_FILE]={content:JSON.stringify(data)};
+  if(!id){ body.description="HPP-Trainer Lernstand"; body.public=false; }
+  const r=await fetch(id?("https://api.github.com/gists/"+id):"https://api.github.com/gists",
+    {method:id?"PATCH":"POST", headers:Object.assign(ghHead(t),{"Content-Type":"application/json"}), body:JSON.stringify(body)});
+  if(!r.ok) throw new Error("Speichern "+r.status);
+  const g=await r.json(); return g.id;
+}
+function syncStatus(t){ const e=document.getElementById("sy-status"); if(e) e.textContent=t; }
+async function syncNow(silent){
+  const cfg=syncCfg(); if(!cfg.token){ if(!silent) syncStatus("Kein Zugriffsschluessel hinterlegt."); return; }
+  try{
+    if(!silent) syncStatus("Synchronisiere \u2026");
+    let id=cfg.gistId || await gistFind(cfg.token);
+    const remote = id ? await gistGet(cfg.token,id) : null;
+    state=mergeState(state, remote); save();
+    const newId=await gistSave(cfg.token, id, state);
+    cfg.gistId=newId||id; cfg.last=Date.now(); setSyncCfg(cfg);
+    if(!silent) syncStatus("Synchronisiert \u2713 " + new Date(cfg.last).toLocaleString("de-DE"));
+  }catch(e){ if(!silent) syncStatus("Fehler: "+e.message); }
+}
+function autoSync(){ if(syncCfg().token) syncNow(true); }
+function exportBackup(){
+  const blob=new Blob([JSON.stringify(state)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download="hpp-trainer-sicherung-"+new Date().toISOString().slice(0,10)+".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  syncStatus("Sicherung exportiert \u2713");
+}
+function importBackup(file){
+  const fr=new FileReader();
+  fr.onload=()=>{ try{ const d=JSON.parse(fr.result); state=mergeState(state,d); save();
+      syncStatus("Sicherung importiert und zusammengefuehrt \u2713"); }
+    catch(e){ syncStatus("Datei konnte nicht gelesen werden."); } };
+  fr.readAsText(file);
+}
+function syncView(){
+  const cfg=syncCfg();
+  app.innerHTML=`<h2>\uD83D\uDD04 Geraete-Sync &amp; Sicherung</h2>
+   <p class="sub">Gleicht Lernfortschritt, Notizen und Markierungen zwischen deinen Geraeten ab.</p>
+   <div class="qcard" style="padding:14px">
+     <b style="font-size:14px">Automatischer Sync (GitHub-Gist)</b>
+     <p class="sub" style="margin:6px 0 8px;font-size:13px">Zugriffsschluessel mit der Berechtigung \u201eGist\u201c. Er wird ausschliesslich auf diesem Geraet gespeichert.</p>
+     <input type="password" id="sy-token" placeholder="${cfg.token?"Schluessel gespeichert \u2013 zum Aendern neu eingeben":"GitHub-Token einfuegen"}" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;font-family:inherit">
+     <div class="btnrow" style="margin-top:8px"><button class="btn ghost" id="sy-save">Schluessel speichern</button><button class="btn primary" id="sy-now">Jetzt synchronisieren</button></div>
+     <div class="sub" id="sy-status" style="margin-top:8px">${cfg.token?("Verbunden"+(cfg.last?" \u00b7 zuletzt "+new Date(cfg.last).toLocaleString("de-DE"):"")):"Noch nicht verbunden"}</div>
+     ${cfg.gistId?`<div class="sub" style="font-size:12px">Gist-ID: ${esc(cfg.gistId)}</div>`:``}
+   </div>
+   <div class="qcard" style="padding:14px;margin-top:12px">
+     <b style="font-size:14px">Sicherungsdatei</b>
+     <p class="sub" style="margin:6px 0 8px;font-size:13px">Unabhaengig vom Sync \u2013 zum Sichern oder manuellen Uebertragen.</p>
+     <div class="btnrow"><button class="btn ghost" id="sy-exp">Exportieren</button><button class="btn ghost" id="sy-imp">Importieren</button></div>
+     <input type="file" id="sy-file" accept="application/json" style="display:none">
+   </div>
+   <p class="footer-note" style="text-align:left">Beim Zusammenfuehren gewinnt pro Karte der neuere Stand. Lernzaehler werden je Geraet getrennt gezaehlt und addiert \u2013 nichts wird doppelt gezaehlt. Geraete-Kennung: ${esc(state.dev||"")}</p>`;
+  document.getElementById("sy-save").onclick=()=>{ const v=document.getElementById("sy-token").value.trim();
+    if(!v){ syncStatus("Bitte einen Schluessel eingeben."); return; }
+    const c=syncCfg(); c.token=v; setSyncCfg(c); syncStatus("Schluessel gespeichert. Jetzt synchronisieren."); };
+  document.getElementById("sy-now").onclick=()=>syncNow(false);
+  document.getElementById("sy-exp").onclick=exportBackup;
+  const f=document.getElementById("sy-file");
+  document.getElementById("sy-imp").onclick=()=>f.click();
+  f.onchange=()=>{ if(f.files&&f.files[0]) importBackup(f.files[0]); };
+}
 function home(){
   const rate=state.answered?Math.round(state.correct/state.answered*100):0;
   const dueT=dueCount(KARTEN)+dueCount(LERNKARTEN), wrongN=wrongCards().length;
@@ -341,7 +464,7 @@ function home(){
      <div class="big-tile mc" id="go-mc"><div class="ico">📝</div><div><h3>Pruefungsfragen</h3><p>${KARTEN.length} MC-Fragen · ${dueCount(KARTEN)} faellig</p></div></div>
      <div class="big-tile fl" id="go-fl"><div class="ico">🃏</div><div><h3>Lernkarten</h3><p>${LERNKARTEN.length} Karten · ${dueCount(LERNKARTEN)} faellig</p></div></div>
      <div class="tile" id="go-ready"><div class="ico">🎯</div><h3>Pruefungsreife</h3><p>${readiness().pct}% &middot; Bestehensgrenze 75 %</p></div>
-     <div class="tile" id="go-count"><div class="ico">📈</div><h3>Lernzaehler</h3><p>Heute ${(function(){const t=todayLog();let n=0;Object.keys(t).forEach(k=>{n+=t[k][0]+t[k][1]+t[k][2];});return n;})()} Karten &middot; Tages- und Gesamtstatistik</p></div>
+     <div class="tile" id="go-count"><div class="ico">📈</div><h3>Lernzaehler</h3><p>Heute ${(function(){const t=todayLog();let n=0;Object.keys(t).forEach(k=>{const a=sumDev(t[k]);n+=a[0]+a[1]+a[2];});return n;})()} Karten &middot; Tages- und Gesamtstatistik</p></div>
      <div class="tile" id="go-stats"><div class="ico">📊</div><h3>Statistik</h3><p>Trefferquote ${rate}% · Karteikasten · Einstellungen</p></div>
    </div>${weekOverview()}`;
   wirePlan();
@@ -356,11 +479,11 @@ function home(){
 }
 function findCard(id){ const s=String(id); return KARTEN.find(c=>String(c.id)===s) || LERNKARTEN.find(c=>String(c.id)===s) || null; }
 function nKey(id){ return String(id); }
-function getNote(id){ return (state.notes||{})[nKey(id)] || ""; }
-function setNote(id,t){ state.notes=state.notes||{}; if(t&&t.trim()) state.notes[nKey(id)]=t; else delete state.notes[nKey(id)]; save(); }
-function isHard(id){ return !!(state.hard||{})[nKey(id)]; }
-function toggleHard(id){ state.hard=state.hard||{}; const k=nKey(id); if(state.hard[k]) delete state.hard[k]; else state.hard[k]=1; save(); return !!state.hard[k]; }
-function hardCards(){ const h=state.hard||{}; return KARTEN.concat(LERNKARTEN).filter(c=>h[nKey(c.id)]); }
+function getNote(id){ const e=(state.notes||{})[nKey(id)]; return (e&&e.t)||""; }
+function setNote(id,t){ state.notes=state.notes||{}; state.notes[nKey(id)]={t:(t||""), ts:Date.now()}; save(); }
+function isHard(id){ const e=(state.hard||{})[nKey(id)]; return !!(e&&e.v); }
+function toggleHard(id){ state.hard=state.hard||{}; const k=nKey(id); const v=isHard(id)?0:1; state.hard[k]={v:v, ts:Date.now()}; save(); return !!v; }
+function hardCards(){ const h=state.hard||{}; return KARTEN.concat(LERNKARTEN).filter(c=>{ const e=h[nKey(c.id)]; return e&&e.v; }); }
 function notesPanelHTML(card){
   const h=isHard(card.id), n=esc(getNote(card.id));
   return `<div class="qcard" style="padding:12px;margin-bottom:12px">
@@ -377,13 +500,13 @@ function wireNotesPanel(card){
 }
 function notesView(){
   const notes=state.notes||{};
-  const ids=Object.keys(notes).filter(id=>(notes[id]||"").trim());
+  const ids=Object.keys(notes).filter(id=>((notes[id]||{}).t||"").trim());
   app.innerHTML=`<h2>\uD83D\uDCDD Meine Notizen</h2><p class="sub">${ids.length} Karten mit eigener Eselsbruecke.</p><div id="nv"></div>`;
   const c=document.getElementById("nv");
   if(!ids.length){ c.innerHTML=`<p class="sub">Noch keine Notizen. Beim Aufdecken einer Karte kannst du eine eigene Merkhilfe hinterlegen.</p>`; return; }
   ids.forEach((id,i)=>{ const card=findCard(id); if(!card) return;
     const d=document.createElement("div"); d.className="qcard";
-    d.innerHTML=`<p class="frage" style="font-size:15px">${esc(card.frage)}</p><div class="erk">${esc(notes[id])}</div><button class="link" id="nv_${i}" style="padding:4px 0">Karte oeffnen</button>`;
+    d.innerHTML=`<p class="frage" style="font-size:15px">${esc(card.frage)}</p><div class="erk">${esc(notes[id].t)}</div><button class="link" id="nv_${i}" style="padding:4px 0">Karte oeffnen</button>`;
     c.appendChild(d); const b=document.getElementById("nv_"+i); if(b) b.onclick=()=>openCard(card.id); });
 }
 function trimTxt(s,n){ s=s||""; return s.length>n? s.slice(0,n).trim()+"\u2026" : s; }
@@ -397,7 +520,7 @@ function startLearn(cards,title){
   if(!cards.length){ nav(()=>{ app.innerHTML=`<h2>${esc(title)}</h2><p class="sub">Hier ist gerade nichts zu tun 🎉</p><button class="btn ghost" id="h">Zur Startseite</button>`; document.getElementById("h").onclick=goHome; }, title); return; }
   nav(()=>renderLearnCard({order:cards.slice(),i:0,title,mixed:true,answers:{}}), title);
 }
-function learnDone(sess){ app.innerHTML=`<h2>Runde geschafft 🎉</h2><p class="sub">${sess.order.length} Karten bearbeitet · 🔥 ${displayStreak()} Tage in Folge.</p><div class="grid"><button class="btn ghost" id="home">Zur Startseite</button></div>`; document.getElementById("home").onclick=goHome; }
+function learnDone(sess){ autoSync(); app.innerHTML=`<h2>Runde geschafft 🎉</h2><p class="sub">${sess.order.length} Karten bearbeitet · 🔥 ${displayStreak()} Tage in Folge.</p><div class="grid"><button class="btn ghost" id="home">Zur Startseite</button></div>`; document.getElementById("home").onclick=goHome; }
 
 /* ---------------- Bereich Pruefungsfragen (MC) ---------------- */
 function mcMenu(){
@@ -480,7 +603,7 @@ function revealLearn(sess,card,chosen){
   const adv=(good)=>{ stopSpeak(); schedule(card.id,good); markWrong(card.id,!good); logAnswer(card,good?2:0); bumpDaily(); if(sess.i<n-1){sess.i++; (sess.mixed?renderLearnCard:renderQuestion)(sess);} else (sess.mixed?learnDone:sessionDone)(sess); };
   document.getElementById("got").onclick=()=>adv(ok); document.getElementById("again").onclick=()=>adv(false);
 }
-function sessionDone(sess){ app.innerHTML=`<h2>Runde geschafft 🎉</h2><p class="sub">Alle ${sess.order.length} Karten bearbeitet.</p>
+function sessionDone(sess){ autoSync(); app.innerHTML=`<h2>Runde geschafft 🎉</h2><p class="sub">Alle ${sess.order.length} Karten bearbeitet.</p>
    <div class="grid"><button class="btn primary" id="again">Weiter lernen</button><button class="btn ghost" id="home">Startseite</button></div>`;
   document.getElementById("again").onclick=()=>startSession(dueFirst(KARTEN.slice()),"Lernmodus",false); document.getElementById("home").onclick=goHome; }
 function examResult(sess){
@@ -492,6 +615,7 @@ function examResult(sess){
   app.innerHTML=`<h2>Ergebnis</h2><div class="result" style="margin:6px 0 14px"><span class="big ${pass?'ok':'no'}">${correct} / ${sess.order.length} richtig (${pct}%)</span>
      <div class="sub">${pass?'Bestanden-Bereich (≥ 75 %) erreicht.':'Noch unter der 75-%-Marke – dranbleiben!'}</div></div>
      <div id="review"></div><button class="btn primary" id="home" style="margin-top:12px">Startseite</button>`;
+  autoSync();
   const rev=document.getElementById("review");
   rows.forEach((r,idx)=>{ const d=document.createElement("div"); d.className="qcard";
     d.innerHTML=`<div class="meta"><span class="badge">Frage ${idx+1}</span><span class="badge">${esc(r.card.thema)}</span>
@@ -578,7 +702,7 @@ function flashReveal(sess,card){
   document.getElementById("g0").onclick=()=>advG(0); document.getElementById("g1").onclick=()=>advG(1); document.getElementById("g2").onclick=()=>advG(2);
   wireRel(card); wireNotesPanel(card);
 }
-function flashDone(sess){ app.innerHTML=`<h2>Runde geschafft 🎉</h2><p class="sub">Alle ${sess.order.length} Lernkarten bearbeitet.</p>
+function flashDone(sess){ autoSync(); app.innerHTML=`<h2>Runde geschafft 🎉</h2><p class="sub">Alle ${sess.order.length} Lernkarten bearbeitet.</p>
    <div class="grid"><button class="btn blue" id="again">Weiter lernen</button><button class="btn ghost" id="home">Startseite</button></div>`;
   document.getElementById("again").onclick=()=>startFlash(dueFirst(LERNKARTEN.slice()),"Lernkarten"); document.getElementById("home").onclick=goHome; }
 
@@ -597,6 +721,7 @@ function statsView(){
     <button class="btn primary" id="weakall" style="margin:6px 0 18px">Nur meine Schwaechen ueben</button>
     ${ttsPanelHTML()}
     <button class="link" id="go-notes" style="display:block">Meine Notizen ansehen</button>
+    <button class="link" id="go-sync" style="display:block">Geraete-Sync &amp; Sicherung</button>
     <button class="link" id="reset">Fortschritt zuruecksetzen</button>`;
   wireTtsPanel();
   fillRadar("radar-mc", masteryRows(KARTEN,"thema"));
@@ -606,10 +731,12 @@ function statsView(){
   for(let b=1;b<=5;b++){ const w=Math.round(boxes[b]/total*100); const el=document.createElement("div"); el.className="boxbar";
     el.innerHTML=`<span class="lbl">Fach ${b}</span><span class="track"><i style="width:${w}%"></i></span><span>${boxes[b]}</span>`; bb.appendChild(el); }
   const gn=document.getElementById("go-notes"); if(gn) gn.onclick=()=>nav(notesView,"Meine Notizen");
+  const gs=document.getElementById("go-sync"); if(gs) gs.onclick=()=>nav(syncView,"Geraete-Sync");
   document.getElementById("reset").onclick=()=>{ if(confirm("Gesamten Lernfortschritt wirklich loeschen?")){ state=fresh(); save(); statsView(); } };
 }
 
 nav(home,"");
+autoSync();
 </script>
 </body>
 </html>
