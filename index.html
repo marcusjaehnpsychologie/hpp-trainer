@@ -62,11 +62,12 @@
   .mkw{border-radius:3px}
   .mkw.m{background:#ffe870;box-shadow:0 0 0 2px #ffe870}
   .mkw.b{font-weight:700}
+  .mkw.u{text-decoration:underline;text-decoration-color:var(--rose-d);text-decoration-thickness:2px;text-underline-offset:3px}
   .mkbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 0}
   .mkbar .chip{padding:6px 12px;font-size:13px}
   .mkbar .chip.mkm.on{background:#ffe870;color:#3a3a3a;border-color:#e8cf4e}
   .mkbar .chip.mkb.on{background:#4a4a4a;color:#fff;border-color:#4a4a4a}
-  .mkbar .chip.mkx.on{background:var(--muted);color:#fff;border-color:var(--muted)}
+  .mkbar .chip.mku.on{background:var(--rose-d);color:#fff;border-color:var(--rose-d)}
   .btnrow{display:flex;gap:10px;margin-top:6px}
   .btn{flex:1;border:0;border-radius:12px;padding:14px;font-size:16px;font-weight:600;cursor:pointer}
   .btn.primary{background:var(--rose);color:#fff}
@@ -697,25 +698,29 @@ function mkTokens(t){ return (t||"").split(/(\s+)/); }
 function mkCount(t){ var n=0; mkTokens(t).forEach(function(p){ if(p && !/^\s+$/.test(p)) n++; }); return n; }
 function getMarks(id, txt){
   var e=(state.marks||{})[mkKey(id)];
-  if(!e || e.len!==mkCount(txt)) return {b:[], m:[]};
-  return {b:(e.b||[]).slice(), m:(e.m||[]).slice()};
+  if(!e || e.len!==mkCount(txt)) return {b:[], m:[], u:[]};
+  /* u fehlt in Datensaetzen aus der Vorversion - leer ergaenzen, nichts geht verloren */
+  return {b:(e.b||[]).slice(), m:(e.m||[]).slice(), u:(e.u||[]).slice()};
 }
 function setMarks(id, txt, mk){
   state.marks=state.marks||{};
   var num=function(a,b){ return a-b; };
   state.marks[mkKey(id)]={ b:(mk.b||[]).slice().sort(num), m:(mk.m||[]).slice().sort(num),
+                           u:(mk.u||[]).slice().sort(num),
                            len:mkCount(txt), ts:Date.now() };
   save();
 }
-function hasMarks(id, txt){ var m=getMarks(id,txt); return !!(m.b.length||m.m.length); }
+function hasMarks(id, txt){ var m=getMarks(id,txt); return !!(m.b.length||m.m.length||m.u.length); }
 function antwortHTML(card, markable){
-  var txt=card.antwort||"", mk=getMarks(card.id, txt), bS={}, mS={}, i=-1;
-  mk.b.forEach(function(x){ bS[x]=1; }); mk.m.forEach(function(x){ mS[x]=1; });
+  var txt=card.antwort||"", mk=getMarks(card.id, txt), bS={}, mS={}, uS={}, i=-1;
+  mk.b.forEach(function(x){ bS[x]=1; });
+  mk.m.forEach(function(x){ mS[x]=1; });
+  mk.u.forEach(function(x){ uS[x]=1; });
   var inner=mkTokens(txt).map(function(p){
     if(!p) return "";
     if(/^\s+$/.test(p)) return esc(p);
     i++;
-    var c="mkw"; if(mS[i]) c+=" m"; if(bS[i]) c+=" b";
+    var c="mkw"; if(mS[i]) c+=" m"; if(bS[i]) c+=" b"; if(uS[i]) c+=" u";
     return '<span class="'+c+'" data-w="'+i+'">'+esc(p)+'</span>';
   }).join("");
   return '<div class="antwort"'+(markable?' id="mkbox"':'')+'>'+inner+'</div>';
@@ -724,7 +729,7 @@ function markBarHTML(){
   return '<div class="mkbar" id="mkbar">'
        + '<div class="chip mkm" data-mk="m">\uD83D\uDD8D Marker</div>'
        + '<div class="chip mkb" data-mk="b">B Fett</div>'
-       + '<div class="chip mkx" data-mk="x">Radierer</div>'
+       + '<div class="chip mku" data-mk="u">U Unterstrichen</div>'
        + '<span class="footer-note" id="mk-hint" style="margin:0;text-align:left">Modus waehlen, dann ueber die Woerter streichen.</span>'
        + '</div>';
 }
@@ -739,46 +744,68 @@ function wireMarks(card){
     mode=(mode===m)?null:m;
     chips.forEach(function(c){ c.classList.toggle("on", c.getAttribute("data-mk")===mode); });
     box.classList.toggle("mkon", !!mode);
-    if(!mode) say("Modus waehlen, dann ueber die Woerter streichen.");
-    else if(mode==="x") say("Ueber Markierungen streichen loescht sie.");
-    else say("Ueber die Woerter streichen. Nochmal streichen hebt auf.");
+    say(mode ? "Ueber die Woerter streichen. Nochmal darueber streichen hebt auf."
+             : "Modus waehlen, dann ueber die Woerter streichen.");
   }
-  chips.forEach(function(c){ c.onclick=function(){ setMode(c.getAttribute("data-mk")); }; });
+  chips.forEach(function(c){
+    var pick=function(ev){ if(ev&&ev.preventDefault) ev.preventDefault(); setMode(c.getAttribute("data-mk")); };
+    c.addEventListener("touchend", pick, {passive:false});
+    c.addEventListener("click", pick);
+  });
   function wordAt(x,y){
     var el=document.elementFromPoint(x,y);
     return (el && el.className && String(el.className).indexOf("mkw")>=0 && box.contains(el)) ? el : null;
   }
+  /* mode ist zugleich der CSS-Klassenname: m = Marker, b = fett, u = unterstrichen */
   function apply(el){
     if(!el || !mode) return;
-    if(mode==="x"){ el.classList.remove("m"); el.classList.remove("b"); return; }
-    var cls=(mode==="m")?"m":"b";
-    if(op) el.classList.add(cls); else el.classList.remove(cls);
+    if(op) el.classList.add(mode); else el.classList.remove(mode);
   }
   function persist(){
-    var b=[], m=[], all=box.getElementsByClassName("mkw");
+    var b=[], m=[], u=[], all=box.getElementsByClassName("mkw");
     for(var k=0;k<all.length;k++){
       var el=all[k], i=parseInt(el.getAttribute("data-w"),10);
       if(el.classList.contains("m")) m.push(i);
       if(el.classList.contains("b")) b.push(i);
+      if(el.classList.contains("u")) u.push(i);
     }
-    setMarks(card.id, txt, {b:b, m:m});
-    say((m.length||b.length) ? "Markierung gespeichert \u2713" : "Markierungen entfernt \u2713");
+    setMarks(card.id, txt, {b:b, m:m, u:u});
+    say((m.length||b.length||u.length) ? "Markierung gespeichert \u2713" : "Markierungen entfernt \u2713");
   }
-  box.addEventListener("pointerdown", function(e){
-    if(!mode) return;
-    var el=wordAt(e.clientX, e.clientY); if(!el) return;
-    e.preventDefault(); down=true;
-    op = (mode==="x") ? 0 : (el.classList.contains(mode==="m"?"m":"b") ? 0 : 1);
-    apply(el);
-    try{ if(box.setPointerCapture) box.setPointerCapture(e.pointerId); }catch(err){}
-  });
-  box.addEventListener("pointermove", function(e){
-    if(!down || !mode) return;
-    e.preventDefault(); apply(wordAt(e.clientX, e.clientY));
-  });
+  function begin(x,y){
+    if(!mode) return false;
+    var el=wordAt(x,y); if(!el) return false;
+    down=true;
+    op = el.classList.contains(mode) ? 0 : 1;
+    apply(el); return true;
+  }
+  function move(x,y){ if(down && mode) apply(wordAt(x,y)); }
   function end(){ if(!down) return; down=false; persist(); }
-  box.addEventListener("pointerup", end);
-  box.addEventListener("pointercancel", end);
+
+  if("ontouchstart" in window){
+    box.addEventListener("touchstart", function(e){
+      if(!mode) return;
+      var t=e.changedTouches[0];
+      if(begin(t.clientX, t.clientY)) e.preventDefault();
+    }, {passive:false});
+    box.addEventListener("touchmove", function(e){
+      if(!down || !mode) return;
+      e.preventDefault();
+      var t=e.changedTouches[0]; move(t.clientX, t.clientY);
+    }, {passive:false});
+    box.addEventListener("touchend", function(e){ if(down) e.preventDefault(); end(); }, {passive:false});
+    box.addEventListener("touchcancel", end);
+  } else {
+    box.addEventListener("pointerdown", function(e){
+      if(begin(e.clientX, e.clientY)){
+        e.preventDefault();
+        try{ if(box.setPointerCapture) box.setPointerCapture(e.pointerId); }catch(err){}
+      }
+    });
+    box.addEventListener("pointermove", function(e){ if(down){ e.preventDefault(); move(e.clientX, e.clientY); } });
+    box.addEventListener("pointerup", end);
+    box.addEventListener("pointercancel", end);
+  }
 }
 function notesPanelHTML(card){
   const h=isHard(card.id), n=esc(getNote(card.id));
