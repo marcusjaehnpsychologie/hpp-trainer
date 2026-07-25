@@ -807,11 +807,24 @@ function wireMarks(card){
     box.addEventListener("pointercancel", end);
   }
 }
+/* Textfeld waechst mit dem Inhalt. Deckel bei halber Bildschirmhoehe, damit die
+   Bewertungsknoepfe auf dem iPhone erreichbar bleiben; darueber scrollt das Feld. */
+function autoGrow(el){
+  if(!el) return;
+  var rahmen = el.offsetHeight - el.clientHeight;
+  el.style.height = "auto";
+  var voll = el.scrollHeight;
+  if(!(voll > 0)){ el.style.height = ""; return; }   /* verborgen: nichts anfassen */
+  var max = Math.round((window.innerHeight || 800) * 0.5);
+  var soll = voll + rahmen;
+  el.style.height = Math.min(soll, max) + "px";
+  el.style.overflowY = (soll > max) ? "auto" : "hidden";
+}
 function notesPanelHTML(card){
   const h=isHard(card.id), n=esc(getNote(card.id));
   return `<div class="qcard" style="padding:12px;margin-bottom:12px">
     <div class="chips" style="margin:0 0 8px"><div class="chip${h?' on':''}" id="np-hard">${h?'\u2605 Als schwer markiert':'\u2606 Als schwer markieren'}</div></div>
-    <textarea id="np-note" placeholder="Eigene Eselsbruecke / Notiz zu dieser Karte \u2026" style="width:100%;min-height:60px;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;font-family:inherit">${n}</textarea>
+    <textarea id="np-note" rows="1" placeholder="Eigene Eselsbruecke / Notiz zu dieser Karte \u2026" style="width:100%;min-height:60px;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;font-family:inherit;overflow:hidden;resize:none">${n}</textarea>
     <div class="footer-note" style="text-align:left;margin-top:4px" id="np-status">Notiz wird automatisch gespeichert.</div>
   </div>`;
 }
@@ -820,7 +833,12 @@ function wireNotesPanel(card){
   const hb=document.getElementById("np-hard");
   if(hb) hb.onclick=()=>{ const v=toggleHard(card.id); hb.classList.toggle("on",v); hb.textContent=v?"\u2605 Als schwer markiert":"\u2606 Als schwer markieren"; };
   const nt=document.getElementById("np-note");
-  if(nt) nt.oninput=()=>{ setNote(card.id, nt.value); const s=document.getElementById("np-status"); if(s) s.textContent="Notiz gespeichert \u2713"; };
+  if(nt){
+    autoGrow(nt);
+    nt.oninput=()=>{ setNote(card.id, nt.value); autoGrow(nt);
+      const s=document.getElementById("np-status"); if(s) s.textContent="Notiz gespeichert \u2713"; };
+    window.addEventListener("resize", function(){ autoGrow(nt); });
+  }
 }
 function notesView(){
   const notes=state.notes||{};
