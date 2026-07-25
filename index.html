@@ -989,9 +989,182 @@ function wireWiki(card){
     else { wikiCachePut(card.id, {miss:1}); fehl("Kein Wikipedia-Artikel zu \u201e"+begriff+"\u201c gefunden."); }
   }).catch(function(){ if(lebt()) fehl("Wikipedia nicht erreichbar."); });
 }
+/* ---------------- Gemini mit Google-Suche ----------------
+   Schluessel liegt in localStorage, nie im Repo - gleiches Muster wie der Sync-Token.
+   Antworten liegen ebenfalls ausserhalb von state, damit der Gist klein bleibt. */
+var GEM_CFG_KEY = "hpp_gem_cfg_v1";
+var GEM_CACHE_KEY = "hpp_gem_cache_v1";
+var GEM_USE_KEY = "hpp_gem_use_v1";
+var GEM_MODELL_STD = "gemini-flash-latest";
+var GEM_LIMIT_STD = 60;
+
+function gemCfg(){
+  var c={}; try{ c=JSON.parse(localStorage.getItem(GEM_CFG_KEY))||{}; }catch(e){}
+  if(!c.modell) c.modell=GEM_MODELL_STD;
+  if(c.limit==null) c.limit=GEM_LIMIT_STD;
+  return c;
+}
+function gemCfgSet(c){ try{ localStorage.setItem(GEM_CFG_KEY, JSON.stringify(c)); }catch(e){} }
+function gemCache(){ try{ return JSON.parse(localStorage.getItem(GEM_CACHE_KEY)||"{}"); }catch(e){ return {}; } }
+function gemCachePut(id,val){
+  try{
+    var c=gemCache(); c[id]=val;
+    var k=Object.keys(c);
+    if(k.length>1400) k.slice(0,k.length-1400).forEach(function(x){ delete c[x]; });
+    localStorage.setItem(GEM_CACHE_KEY, JSON.stringify(c));
+  }catch(e){}
+}
+function gemUse(){
+  var u={day:0,n:0}; try{ u=JSON.parse(localStorage.getItem(GEM_USE_KEY))||u; }catch(e){}
+  if(u.day!==today()){ u={day:today(), n:0}; }
+  return u;
+}
+function gemUsePlus(){
+  var u=gemUse(); u.n++; try{ localStorage.setItem(GEM_USE_KEY, JSON.stringify(u)); }catch(e){}
+  return u.n;
+}
+function gemPrompt(frage){
+  return "Du hilfst bei der Vorbereitung auf die amtsaerztliche Ueberpruefung fuer Heilpraktiker "
+       + "fuer Psychotherapie in Deutschland. Antworte auf Deutsch, hoechstens 110 Woerter, sachlich, "
+       + "ohne Einleitung und ohne Anrede. Richte dich nach der ICD-10, wo einschlaegig. Nenne Zahlen "
+       + "(Anzahl Kriterien, Zeitraeume) nur, wenn du sie belegen kannst, und schreibe dazu, woher sie "
+       + "stammen. Wenn du unsicher bist, sage das ausdruecklich.\n\nFrage: " + frage;
+}
+function gemAsk(frage){
+  var c=gemCfg();
+  if(!c.key) return Promise.reject(new Error("Kein Schluessel hinterlegt."));
+  var url="https://generativelanguage.googleapis.com/v1beta/models/"
+         + encodeURIComponent(c.modell)+":generateContent";
+  var ctl=(typeof AbortController!=="undefined")?new AbortController():null;
+  var timer=setTimeout(function(){ if(ctl) ctl.abort(); }, 25000);
+  return fetch(url, {
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-goog-api-key":c.key},
+    body:JSON.stringify({
+      contents:[{parts:[{text:gemPrompt(frage)}]}],
+      tools:[{google_search:{}}]
+    }),
+    signal: ctl?ctl.signal:undefined
+  }).then(function(r){ return r.json().then(function(j){ return {ok:r.ok, status:r.status, j:j}; }); })
+   .then(function(res){
+     clearTimeout(timer);
+     var j=res.j||{};
+     if(j.error) throw new Error((j.error.status||res.status)+": "+(j.error.message||"unbekannt"));
+     if(!res.ok) throw new Error("HTTP "+res.status);
+     var cand=(j.candidates||[])[0];
+     var teile=(cand&&cand.content&&cand.content.parts)||[];
+     var txt=teile.map(function(t){ return t.text||""; }).join("").trim();
+     if(!txt) throw new Error("Leere Antwort"+(cand&&cand.finishReason?" ("+cand.finishReason+")":""));
+     var q=[], gm=cand.groundingMetadata||{};
+     (gm.groundingChunks||[]).forEach(function(g){
+       if(g && g.web && g.web.uri) q.push({t:g.web.title||g.web.uri, u:g.web.uri});
+     });
+     return {x:txt, q:q.slice(0,4), ts:Date.now()};
+   }, function(e){ clearTimeout(timer); throw e; });
+}
+function gemPanelHTML(card){
+  if(!gemCfg().key) return "";
+  return '<div class="qcard" id="gembox" style="padding:12px;margin-bottom:12px;border-left:4px solid var(--amber)">'
+       + '<div id="gem-body" class="footer-note" style="text-align:left;margin:0">KI-Antwort \u2026</div></div>';
+}
+function wireGem(card){
+  var box=document.getElementById("gembox"); if(!box) return;
+  var lebt=function(){ return document.getElementById("gembox")===box; };
+  function setz(h){ var b=document.getElementById("gem-body"); if(b) b.innerHTML=h; }
+  function fehl(t){ setz('<span style="color:var(--muted)">'+esc(t)+'</span>'); }
+
+  function zeige(r){
+    var quellen = (r.q&&r.q.length)
+      ? '<div style="margin-top:8px;font-size:12px">Quellen: '
+        + r.q.map(function(x,i){ return '<a href="'+esc(x.u)+'" target="_blank" rel="noopener" '
+            + 'style="color:var(--rose-d)">'+(i+1)+'. '+esc(String(x.t).slice(0,42))+'</a>'; }).join(" \u00b7 ")
+        + '</div>' : '';
+    setz('<b style="font-size:13px;color:var(--amber)">KI-Antwort (Gemini + Google-Suche)</b>'
+       + '<div style="font-size:13.5px;color:var(--fg);margin-top:6px;line-height:1.5;white-space:pre-line">'+esc(r.x)+'</div>'
+       + quellen
+       + '<div style="margin-top:10px"><button class="chip" id="gem-take" style="padding:6px 12px;font-size:13px">In meine Notiz uebernehmen</button></div>'
+       + '<div style="font-size:11px;color:var(--muted);margin-top:8px">Maschinell erzeugt. '
+       + 'Zahlen und ICD-Kriterien gegen deine Kartenantwort pruefen \u2013 bei Abweichung gilt die Karte.</div>');
+    var tk=document.getElementById("gem-take");
+    if(tk) tk.onclick=function(){
+      var nt=document.getElementById("np-note"); if(!nt) return;
+      var alt=nt.value.trim();
+      var neu=(alt?alt+"\n\n":"")+"KI-Antwort (ungeprueft):\n"+r.x;
+      nt.value=neu; setNote(card.id, neu); if(typeof autoGrow==="function") autoGrow(nt);
+      var st=document.getElementById("np-status"); if(st) st.textContent="In Notiz uebernommen \u2713";
+      tk.textContent="\u2713 uebernommen"; tk.disabled=true;
+    };
+  }
+
+  var c=gemCfg();
+  var cached=gemCache()[card.id];
+  if(cached){ if(cached.miss) fehl("Zuletzt keine Antwort erhalten."); else zeige(cached); return; }
+  if(navigator && navigator.onLine===false){ fehl("Offline \u2013 keine KI-Abfrage."); return; }
+  var u=gemUse();
+  if(c.limit>0 && u.n>=c.limit){
+    fehl("Tageslimit erreicht ("+u.n+"/"+c.limit+"). Aenderbar unter Statistik \u203a KI-Antwort.");
+    return;
+  }
+  setz('<span style="color:var(--muted)">KI-Antwort wird geholt \u2026</span>');
+  gemUsePlus();
+  gemAsk(card.frage).then(function(r){
+    if(!lebt()) return;
+    gemCachePut(card.id, r); zeige(r);
+  }).catch(function(e){
+    if(lebt()) fehl("Fehler: "+(e&&e.message?e.message:"unbekannt"));
+  });
+}
+function gemView(){
+  var c=gemCfg(), u=gemUse();
+  app.innerHTML='<h2>KI-Antwort (Gemini)</h2>'
+   +'<p class="sub">Stellt die vollstaendige Kartenfrage an Gemini mit Google-Suche. Der Schluessel bleibt auf diesem Geraet und steht nicht im Repo \u2013 auf jedem Geraet einmal eintragen.</p>'
+   +'<div class="qcard" style="padding:16px">'
+   +'<label style="font-size:13px;font-weight:600">API-Schluessel (Google AI Studio)</label>'
+   +'<input type="password" id="gm-key" value="'+esc(c.key||"")+'" placeholder="AIza\u2026" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;margin:6px 0 12px">'
+   +'<label style="font-size:13px;font-weight:600">Modell</label>'
+   +'<input type="text" id="gm-mod" value="'+esc(c.modell)+'" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;margin:6px 0 12px">'
+   +'<label style="font-size:13px;font-weight:600">Abfragen pro Tag (0 = ohne Grenze)</label>'
+   +'<input type="number" id="gm-lim" min="0" max="500" value="'+c.limit+'" style="width:110px;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;margin:6px 0 12px;text-align:right">'
+   +'<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:12px"><span>heute verbraucht</span><b>'+u.n+'</b></div>'
+   +'<button class="btn primary" id="gm-save" style="margin:0">Speichern</button>'
+   +'<button class="btn ghost" id="gm-test" style="margin-top:8px">Verbindung testen</button>'
+   +'<button class="btn ghost" id="gm-clear" style="margin-top:8px">Zwischenspeicher leeren</button>'
+   +'<div id="gm-out" class="footer-note" style="text-align:left;margin-top:10px"></div>'
+   +'</div>'
+   +'<p class="footer-note" style="text-align:left">Jede Suchanfrage, die das Modell ausfuehrt, wird von Google abgerechnet. Bei automatischem Abruf entstehen so schnell mehrere tausend Anfragen bis zur Pruefung \u2013 das Tageslimit begrenzt das.</p>';
+  var out=document.getElementById("gm-out");
+  function lese(){
+    var c2=gemCfg();
+    c2.key=document.getElementById("gm-key").value.trim();
+    c2.modell=document.getElementById("gm-mod").value.trim()||GEM_MODELL_STD;
+    c2.limit=Math.max(0, parseInt(document.getElementById("gm-lim").value,10)||0);
+    return c2;
+  }
+  document.getElementById("gm-save").onclick=function(){
+    gemCfgSet(lese()); out.textContent="Gespeichert \u2713";
+  };
+  document.getElementById("gm-test").onclick=function(){
+    gemCfgSet(lese());
+    out.textContent="Teste \u2026";
+    gemAsk("Nenne in einem Satz, was die ICD-10 ist.").then(function(r){
+      out.innerHTML='<span style="color:#4a7c59">Verbindung steht \u2713</span>'
+        +'<div style="margin-top:6px;color:var(--fg)">'+esc(r.x.slice(0,300))+'</div>'
+        +'<div style="margin-top:6px;color:var(--muted)">Quellen erhalten: '+(r.q?r.q.length:0)+'</div>';
+    }).catch(function(e){
+      out.innerHTML='<span style="color:#b4453c">Fehlgeschlagen</span>'
+        +'<div style="margin-top:6px;color:var(--fg);word-break:break-word">'+esc(e&&e.message?e.message:"unbekannt")+'</div>'
+        +'<div style="margin-top:6px;color:var(--muted)">Bei \u201eFailed to fetch\u201c blockiert der Browser die Verbindung (CORS). '
+        +'Bei \u201eAPI key not valid\u201c stimmt der Schluessel nicht. Bei \u201enot found\u201c stimmt der Modellname nicht.</div>';
+    });
+  };
+  document.getElementById("gm-clear").onclick=function(){
+    try{ localStorage.removeItem(GEM_CACHE_KEY); }catch(e){}
+    out.textContent="Zwischenspeicher geleert \u2713";
+  };
+}
 function notesPanelHTML(card){
   const h=isHard(card.id), n=esc(getNote(card.id));
-  return wikiPanelHTML(card)+`<div class="qcard" style="padding:12px;margin-bottom:12px">
+  return wikiPanelHTML(card)+gemPanelHTML(card)+`<div class="qcard" style="padding:12px;margin-bottom:12px">
     <div class="chips" style="margin:0 0 8px"><div class="chip${h?' on':''}" id="np-hard">${h?'\u2605 Als schwer markiert':'\u2606 Als schwer markieren'}</div></div>
     <textarea id="np-note" rows="1" placeholder="Eigene Eselsbruecke / Notiz zu dieser Karte \u2026" style="width:100%;min-height:60px;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;font-family:inherit;overflow:hidden;resize:none">${n}</textarea>
     <div class="footer-note" style="text-align:left;margin-top:4px" id="np-status">Notiz wird automatisch gespeichert.</div>
@@ -1000,6 +1173,7 @@ function notesPanelHTML(card){
 function wireNotesPanel(card){
   wireMarks(card);
   wireWiki(card);
+  wireGem(card);
   const hb=document.getElementById("np-hard");
   if(hb) hb.onclick=()=>{ const v=toggleHard(card.id); hb.classList.toggle("on",v); hb.textContent=v?"\u2605 Als schwer markiert":"\u2606 Als schwer markieren"; };
   const nt=document.getElementById("np-note");
@@ -1346,6 +1520,7 @@ function statsView(){
     <button class="btn primary" id="weakall" style="margin:6px 0 18px">Nur meine Schwaechen ueben</button>
     ${ttsPanelHTML()}
     <button class="link" id="go-notes" style="display:block">Meine Notizen ansehen</button>
+    <button class="link" id="go-gemini" style="display:block">KI-Antwort (Gemini) einrichten</button>
     <button class="link" id="go-staffel" style="display:block">Karten-Staffelung (Einstieg planen)</button>
     <button class="link" id="go-sync" style="display:block">Geraete-Sync &amp; Sicherung</button>
     <button class="link" id="reset">Fortschritt zuruecksetzen</button>`;
@@ -1359,6 +1534,7 @@ function statsView(){
   for(let b=1;b<=5;b++){ const w=Math.round(boxes[b]/total*100); const el=document.createElement("div"); el.className="boxbar";
     el.innerHTML=`<span class="lbl">Fach ${b}</span><span class="track"><i style="width:${w}%"></i></span><span>${boxes[b]}</span>`; bb.appendChild(el); }
   const gn=document.getElementById("go-notes"); if(gn) gn.onclick=()=>nav(notesView,"Meine Notizen");
+  const ggm=document.getElementById("go-gemini"); if(ggm) ggm.onclick=()=>nav(gemView,"KI-Antwort");
   const gst=document.getElementById("go-staffel"); if(gst) gst.onclick=()=>nav(staffelView,"Karten-Staffelung");
   const gs=document.getElementById("go-sync"); if(gs) gs.onclick=()=>nav(syncView,"Geraete-Sync");
   document.getElementById("reset").onclick=()=>{ if(confirm("Gesamten Lernfortschritt wirklich loeschen?")){ state=fresh(); save(); statsView(); } };
