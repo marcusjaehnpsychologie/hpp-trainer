@@ -820,9 +820,178 @@ function autoGrow(el){
   el.style.height = Math.min(soll, max) + "px";
   el.style.overflowY = (soll > max) ? "auto" : "hidden";
 }
+/* Extrahiert aus einer Pruefungsfrage den nachschlagbaren Fachbegriff. */
+
+var WIKI_STOPP = {"Was":1,"Welche":1,"Welcher":1,"Welches":1,"Wie":1,"Wer":1,"Wann":1,"Wo":1,
+"Warum":1,"Wodurch":1,"Woran":1,"Womit":1,"Nennen":1,"Erklaeren":1,"Erklären":1,"Beschreiben":1,
+"Sie":1,"Zu":1,"Bei":1,"In":1,"Der":1,"Die":1,"Das":1,"Ein":1,"Eine":1,"Einen":1,"Einem":1,
+"Einer":1,"Es":1,"Man":1,"Und":1,"Oder":1,"Mit":1,"Von":1,"Fuer":1,"Für":1,"Auf":1,"Aus":1,
+"Nach":1,"Ueber":1,"Über":1,"Unter":1,"Durch":1,"Gibt":1,"Sind":1,"Ist":1,"Hat":1,"Haben":1,
+"Kann":1,"Koennen":1,"Können":1,"Soll":1,"Sollen":1,"Muss":1,"Wird":1,"Werden":1,"Begriff":1,
+"Aussage":1,"Aussagen":1,"Bezug":1,"Beispiel":1,"Beispiele":1,"Unterschied":1,"Unterschiede":1,
+"Ziele":1,"Ziel":1,"Merkmale":1,"Arten":1,"Art":1,"Formen":1,"Form":1,"Ursachen":1,"Folgen":1,
+"Symptome":1,"Kriterien":1,"Definition":1,"Bedeutung":1,"Aufgabe":1,"Aufgaben":1};
+
+/* Abkuerzungen, die trotz Grossschreibung erhalten bleiben */
+var WIKI_ABK = {"ICD":1,"DSM":1,"EMDR":1,"DBT":1,"ADHS":1,"PTBS":1,"AMDP":1,"BPS":1,"MAO":1,
+"SSRI":1,"SNRI":1,"EEG":1,"EKG":1,"IQ":1,"KJP":1,"BGB":1,"StGB":1,"SGB":1,"IfSG":1,"PsychKG":1,
+"HWG":1,"MMST":1,"AT":1,"PMR":1,"TA":1,"NET":1};
+
+function wikiSaeubern(f){
+  var t = String(f||"");
+  t = t.split("?")[0];                                  /* nur die erste Teilfrage */
+  t = t.replace(/\s+[Oo]\s+/g, " ");                    /* OCR-Aufzaehlungszeichen */
+  t = t.replace(/[«»„“”"'\u2018\u2019]/g, " ");
+  /* fuehrender OCR-Muell: Grossbuchstabenblock ohne Vokalstruktur, z. B. "QWOEIM" */
+  t = t.replace(/^\s*[A-ZÄÖÜ]{2,}[A-ZÄÖÜa-zäöüß]*\s+(?=[A-ZÄÖÜ]?[a-zäöüß])/, function(m){
+    var w = m.trim();
+    return (WIKI_ABK[w] || /^[A-ZÄÖÜ][a-zäöüß]+$/.test(w)) ? m : " ";
+  });
+  return t.replace(/\s+/g," ").trim();
+}
+
+var WIKI_MUSTER = [
+  /^Was verstehe?n?\s+(?:Sie\s+)?(?:man\s+)?unter\s+(.+)$/i,
+  /^Was ist(?:\s+eine?[rnms]?)?\s+(.+)$/i,
+  /^Was sind(?:\s+die)?\s+(.+)$/i,
+  /^Was kennzeichnet(?:\s+eine?[rnms]?)?\s+(.+)$/i,
+  /^Was bedeutet(?:\s+in Bezug auf\s+[^,]+?)?\s+(.+)$/i,
+  /^Erkl(?:ae|ä)ren Sie(?:\s+den Begriff)?\s+(.+)$/i,
+  /^Beschreiben Sie(?:\s+die|\s+den|\s+das)?\s+(.+)$/i,
+  /^Nennen Sie(?:\s+die|\s+den|\s+das)?\s+(.+)$/i,
+  /^Was wissen Sie (?:zu|ueber|über)[rm]?\s+(.+)$/i,
+  /^Wie (?:wirkt|wirken|funktioniert|funktionieren)\s+(.+)$/i,
+  /^Wie ist\s+(.+?)\s+(?:definiert|aufgebaut|gegliedert).*$/i,
+  /^Wer gilt als\s+(.+)$/i,
+  /^Welche Ziele sollen mit\s+(.+?)\s+erreicht werden.*$/i
+];
+
+function wikiBegriff(frage){
+  var t = wikiSaeubern(frage), roh = null;
+  for(var i=0;i<WIKI_MUSTER.length;i++){
+    var m = t.match(WIKI_MUSTER[i]);
+    if(m){ roh = m[1]; break; }
+  }
+  if(roh){
+    roh = roh.replace(/^(?:eine?[rnms]?|der|die|das|dem|den)\s+/i,"")
+             .replace(/\s+(?:nach ICD-?\s?10|nach ICD|nach DSM-?\s?5|nach DSM).*$/i,"")
+             .replace(/[.,;:!]+$/,"").trim();
+    var w = roh.split(/\s+/);
+    if(w.length>=1 && w.length<=4) return roh;
+  }
+  /* Rueckfall: laengstes grossgeschriebenes Wort - im Deutschen fast immer das Substantiv */
+  var best="";
+  t.split(/[\s,;:.()\/]+/).forEach(function(w){
+    w = w.replace(/[.,;:!?]+$/,"");
+    if(!w || WIKI_STOPP[w]) return;
+    if(!/^[A-ZÄÖÜ]/.test(w)) return;
+    if(w.length>best.length) best=w;
+  });
+  return best.length>=4 ? best : "";
+}
+
+/* ---------------- Wikipedia-Nachschlagen ----------------
+   Ergebnisse liegen ausserhalb von state in einem eigenen localStorage-Schluessel,
+   damit der Gist-Sync nicht mit ~1200 Artikelauszuegen aufgeblaeht wird. */
+var WIKI_KEY = "hpp_wiki_v1";
+function wikiCache(){ try{ return JSON.parse(localStorage.getItem(WIKI_KEY)||"{}"); }catch(e){ return {}; } }
+function wikiCachePut(id, val){
+  try{
+    var c=wikiCache(); c[id]=val;
+    var k=Object.keys(c);
+    if(k.length>1400) k.slice(0, k.length-1400).forEach(function(x){ delete c[x]; });
+    localStorage.setItem(WIKI_KEY, JSON.stringify(c));
+  }catch(e){}
+}
+function wikiFetch(url){
+  var ctl = (typeof AbortController!=="undefined") ? new AbortController() : null;
+  var timer = setTimeout(function(){ if(ctl) ctl.abort(); }, 7000);
+  return fetch(url, ctl?{signal:ctl.signal}:{}).then(function(r){
+    clearTimeout(timer);
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    return r.json();
+  }, function(e){ clearTimeout(timer); throw e; });
+}
+function wikiParse(j){
+  var pg = j && j.query && j.query.pages; if(!pg) return null;
+  var k = Object.keys(pg);
+  for(var i=0;i<k.length;i++){
+    var pa = pg[k[i]];
+    if(pa && !("missing" in pa) && pa.extract && pa.extract.trim().length>40){
+      return { t: pa.title, x: pa.extract.trim(),
+               u: "https://de.wikipedia.org/wiki/"+encodeURIComponent(pa.title.replace(/ /g,"_")) };
+    }
+  }
+  return null;
+}
+function wikiLookup(begriff){
+  var b="https://de.wikipedia.org/w/api.php?action=query&format=json&origin=*"
+       +"&prop=extracts&exintro=1&explaintext=1&redirects=1";
+  return wikiFetch(b+"&titles="+encodeURIComponent(begriff)).then(function(j){
+    var r=wikiParse(j); if(r){ r.via="Artikel"; return r; }
+    return wikiFetch(b+"&generator=search&gsrlimit=1&gsrsearch="+encodeURIComponent(begriff))
+      .then(function(j2){ var r2=wikiParse(j2); if(r2) r2.via="Volltextsuche"; return r2; });
+  });
+}
+function wikiKurz(t){
+  if(t.length<=620) return t;
+  var cut=t.slice(0,620), p=cut.lastIndexOf(". ");
+  return (p>320 ? cut.slice(0,p+1) : cut) + " \u2026";
+}
+function wikiPanelHTML(card){
+  return '<div class="qcard" id="wikibox" style="padding:12px;margin-bottom:12px">'
+       + '<div id="wiki-body" class="footer-note" style="text-align:left;margin:0">Nachschlagen \u2026</div></div>';
+}
+function wireWiki(card){
+  var box=document.getElementById("wikibox"); if(!box) return;
+  var begriff=wikiBegriff(card.frage);
+  var gUrl="https://www.google.com/search?q="+encodeURIComponent(begriff || card.frage);
+  var lebt=function(){ return document.getElementById("wikibox")===box; };
+  function google(){
+    return '<a href="'+gUrl+'" target="_blank" rel="noopener" '
+         + 'style="font-size:13px;color:var(--rose-d)">Bei Google suchen \u2197</a>';
+  }
+  function setz(html){ var b=document.getElementById("wiki-body"); if(b) b.innerHTML=html; }
+  function fehl(txt){ setz('<span style="color:var(--muted)">'+esc(txt)+'</span><div style="margin-top:8px">'+google()+'</div>'); }
+
+  function zeige(r){
+    setz('<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'
+       + '<b style="font-size:13px;color:var(--rose-d)">Wikipedia: '+esc(r.t)+'</b>'
+       + '<span style="font-size:11px;color:var(--muted)">'+esc(r.via||"")+'</span></div>'
+       + '<div style="font-size:13.5px;color:var(--fg);margin-top:6px;line-height:1.5">'+esc(wikiKurz(r.x))+'</div>'
+       + '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:center">'
+       + '<button class="chip" id="wiki-take" style="padding:6px 12px;font-size:13px">In meine Notiz uebernehmen</button>'
+       + '<a href="'+r.u+'" target="_blank" rel="noopener" style="font-size:13px;color:var(--rose-d)">Ganzer Artikel \u2197</a>'
+       + google()+'</div>'
+       + '<div style="font-size:11px;color:var(--muted);margin-top:8px">Auszug aus Wikipedia (CC BY-SA). '
+       + 'Nicht auf die HPP-Pruefung abgestimmt \u2013 gegen ICD-10 pruefen.</div>');
+    var tk=document.getElementById("wiki-take");
+    if(tk) tk.onclick=function(){
+      var nt=document.getElementById("np-note"); if(!nt) return;
+      var alt=nt.value.trim();
+      var neu=(alt?alt+"\n\n":"")+"Wikipedia \u2013 "+r.t+":\n"+wikiKurz(r.x);
+      nt.value=neu; setNote(card.id, neu); if(typeof autoGrow==="function") autoGrow(nt);
+      var st=document.getElementById("np-status"); if(st) st.textContent="In Notiz uebernommen \u2713";
+      tk.textContent="\u2713 uebernommen"; tk.disabled=true;
+    };
+  }
+
+  if(!begriff){ fehl("Kein nachschlagbarer Begriff in der Frage erkannt."); return; }
+
+  var c=wikiCache()[card.id];
+  if(c){ if(c.miss) fehl("Kein Wikipedia-Artikel gefunden."); else zeige(c); return; }
+  if(navigator && navigator.onLine===false){ fehl("Offline \u2013 nicht abgefragt."); return; }
+
+  setz('<span style="color:var(--muted)">Wikipedia wird abgefragt \u2026</span>');
+  wikiLookup(begriff).then(function(r){
+    if(!lebt()) return;
+    if(r){ wikiCachePut(card.id, r); zeige(r); }
+    else { wikiCachePut(card.id, {miss:1}); fehl("Kein Wikipedia-Artikel zu \u201e"+begriff+"\u201c gefunden."); }
+  }).catch(function(){ if(lebt()) fehl("Wikipedia nicht erreichbar."); });
+}
 function notesPanelHTML(card){
   const h=isHard(card.id), n=esc(getNote(card.id));
-  return `<div class="qcard" style="padding:12px;margin-bottom:12px">
+  return wikiPanelHTML(card)+`<div class="qcard" style="padding:12px;margin-bottom:12px">
     <div class="chips" style="margin:0 0 8px"><div class="chip${h?' on':''}" id="np-hard">${h?'\u2605 Als schwer markiert':'\u2606 Als schwer markieren'}</div></div>
     <textarea id="np-note" rows="1" placeholder="Eigene Eselsbruecke / Notiz zu dieser Karte \u2026" style="width:100%;min-height:60px;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;font-family:inherit;overflow:hidden;resize:none">${n}</textarea>
     <div class="footer-note" style="text-align:left;margin-top:4px" id="np-status">Notiz wird automatisch gespeichert.</div>
@@ -830,6 +999,7 @@ function notesPanelHTML(card){
 }
 function wireNotesPanel(card){
   wireMarks(card);
+  wireWiki(card);
   const hb=document.getElementById("np-hard");
   if(hb) hb.onclick=()=>{ const v=toggleHard(card.id); hb.classList.toggle("on",v); hb.textContent=v?"\u2605 Als schwer markiert":"\u2606 Als schwer markieren"; };
   const nt=document.getElementById("np-note");
