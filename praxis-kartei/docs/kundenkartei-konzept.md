@@ -14,7 +14,7 @@ Diagnosen und ICD-10/ICD-11 sind in [`diagnosen-icd.md`](diagnosen-icd.md) ausge
 | Rechnungen | Bleiben in **sevDesk**. API-Anbindung erst, wenn die Kartei steht (Abschnitt 7) |
 | Priorität | Kartei von der Erstanfrage bis zur Gesprächsvorbereitung, inklusive Diagnosen |
 | Heilkunde-Erlaubnis | HP-Psychotherapie-Prüfung im **Dezember 2026**. Bis die Erlaubnis erteilt ist, gelten **alle Fälle als Coaching**, das Diagnosemodul ist gesperrt. Freischaltung über die Praxis-Einstellungen (Datum der Erlaubnis, Behörde, Aktenzeichen) |
-| Testverfahren | FPI-R, SSI, Autismus-Screening, BPI, EBI, Kinder-Screening, weitere folgen → [`testverfahren.md`](testverfahren.md) |
+| Testverfahren | FPI-R, PSSI, ADOS-2, BPI, EBI, CBCL; weitere folgen → [`testverfahren.md`](testverfahren.md) |
 
 **Übergang Coaching → Heilkunde:** Ein laufender Coaching-Fall wird nach der Erlaubnis **nicht rückwirkend umgestellt**. Entweder wird er ab einem Stichtag umgestellt (frühere Sitzungen bleiben Coaching), oder es wird ein neuer Heilkunde-Fall angelegt. Diagnosen gelten frühestens ab dem Datum der Erlaubnis.
 
@@ -233,6 +233,6 @@ Grundregel schon jetzt: **Keine Diagnose wandert automatisch zu sevDesk.** Nur a
 
 1. ~~Heilkunde-Erlaubnis~~ → Prüfung Dezember 2026, Freischaltung per Einstellung
 2. Vorbereitungsblatt: Variante A oder B (Abschnitt 5)?
-3. Testverfahren: genaue Bezeichnung von SSI, Autismus-Test, Kinder-Screening (siehe `testverfahren.md`)
+3. ~~Testverfahren~~ → FPI-R, PSSI, ADOS-2, BPI, EBI, CBCL bestätigt
 4. Diary Card: reicht deine Eingabe, oder sollen Klient/innen später selbst eintragen?
-5. Repo `praxis-kartei` anlegen (kann ich in dieser Sitzung nicht selbst)
+5. Repo `praxis-kartei` anlegen → Projektgerüst liegt fertig vor (siehe README)

@@ -18,22 +18,24 @@ Keine Items, keine Normtabellen im Code. Skalennamen und Wertebereiche trägst d
 
 ---
 
-## 2. Deine Verfahren
+## 2. Deine Verfahren (bestätigt 08.11.2026)
 
-| Kurz | Verfahren (meine Annahme) | Wer wird beurteilt | Urteilsart | Einsatz | Status |
+| Kurz | Verfahren | Wer wird beurteilt | Urteilsart | Einsatz | Hinweis |
 |---|---|---|---|---|---|
-| FPI-R | Freiburger Persönlichkeitsinventar, revidiert | Klient/in | Selbst | Coaching + Heilkunde | Verlagsverfahren **[Kenntnisstand]** |
-| SSI | **[klären]** – Selbststeuerungsinventar (Kuhl/Fuhrmann, PSI-Theorie)? | Klient/in | Selbst | Coaching + Heilkunde | **[klären]** |
-| Autismus | **[klären]** – AQ, RAADS-R, SRS-2 oder anderes? | Klient/in | Selbst / Fremd | **nur Screening** | **[klären]** |
-| BPI | Borderline-Persönlichkeits-Inventar (Leichsenring) | Klient/in | Selbst | klinisch → Heilkunde | Verlagsverfahren **[Kenntnisstand]** |
-| EBI | Eltern-Belastungs-Inventar (Tröster), deutsche Fassung des Parenting Stress Index | Elternteil | Selbst (über Eltern- und Kindbereich) | Elterncoaching, Gutachten-Begleitung | Verlagsverfahren **[Kenntnisstand]** |
-| Kinder-Screening | **[klären]** – SDQ, CBCL oder anderes? | **Kind** | **Fremd** (Elternurteil) | Elterncoaching, Gutachten-Begleitung | **[klären]** |
+| FPI-R | Freiburger Persönlichkeitsinventar, revidiert (Fahrenberg, Hampel, Selg) | Klient/in | Selbst | Coaching + Heilkunde | Stanine-Profil |
+| PSSI | Persönlichkeits-Stil- und Störungs-Inventar (Kuhl, Kazén) | Klient/in | Selbst | Coaching + Heilkunde | Stile ≠ Störungen; allein nicht diagnostisch |
+| ADOS-2 | Diagnostische Beobachtungsskala für Autistische Störungen – 2 | Klient/in | **Beobachtung** durch Untersucher | Heilkunde | **Schulung erforderlich**; allein nicht ausreichend (Anamnese, ggf. ADI-R, Fachambulanz) |
+| BPI | Borderline-Persönlichkeits-Inventar (Leichsenring) | Klient/in | Selbst | klinisch → Heilkunde | im Coaching keine diagnostische Interpretation |
+| EBI | Eltern-Belastungs-Inventar (Tröster) | Elternteil | Selbst | Elterncoaching, Gutachten-Begleitung | Eltern- und Kindbereich |
+| CBCL/6-18R | Child Behavior Checklist, Elternfragebogen (Achenbach; dt. Fassung) | **Kind** | **Fremd** (Elternurteil) | Elterncoaching, Gutachten-Begleitung | Altersversion prüfen (1½–5 / 6–18) |
 
----
+Alle sechs liegen als Startkatalog in `supabase/migrations/0002_testverfahren_katalog.sql` – nur Stammangaben, keine Items, keine Normen. Autoren-/Verlagsangaben nach Kenntnisstand, im Katalog als „Angaben klären“ markiert.
+
+**ADOS-2 ist kein Fragebogen**, sondern eine standardisierte Verhaltensbeobachtung (Module T, 1–4) mit Algorithmus-Klassifikation und Vergleichswert. Durchführung und Auswertung setzen nach meinem Kenntnisstand ein klinisches Training voraus. **[prüfen: ob du die Schulung hast]**
 
 ## 3. Fachliche Schwachstellen, die die App abfangen muss
 
-1. **Screening ist keine Diagnose.** Das gilt besonders für den Autismus-Test. Eine Autismus-Diagnose bei Erwachsenen wird in Deutschland in der Regel in spezialisierten Fachambulanzen gestellt. Ein auffälliges Screening führt in der App deshalb höchstens zu „Verdacht“ (V) plus Feld „Weiterverweisung“, nie zu „gesichert“ (G). **[Kenntnisstand]**
+1. **Ein Verfahren allein ist keine Diagnose.** Das gilt besonders für ADOS-2. Eine Autismus-Diagnose bei Erwachsenen wird in Deutschland in der Regel in spezialisierten Fachambulanzen gestellt. Ein auffälliges Screening führt in der App deshalb höchstens zu „Verdacht“ (V) plus Feld „Weiterverweisung“, nie zu „gesichert“ (G). **[Kenntnisstand]**
 2. **Kinder-Screening ist ein Elternurteil, kein Befund über das Kind.** In Trennungs- und Gutachtenfällen beurteilt ein Elternteil im Konflikt das Kind. Die App speichert das als „Einschätzung von [Elternteil] über [Kind]“ und hängt es an den Fall des Elternteils. Für das Kind entsteht weder eine eigene Akte noch eine Diagnose. Bei zwei Elternteilen lassen sich zwei Elternurteile nebeneinander zeigen; Abweichungen sind fachlich oft aussagekräftiger als der Einzelwert.
 3. **Einwilligung bei Kindern.** Wird das Kind selbst untersucht, braucht es bei gemeinsamem Sorgerecht nach meinem Kenntnisstand die Zustimmung **beider** Sorgeberechtigten. Die App fragt das als Pflichtfeld ab. **[Kenntnisstand, rechtlich prüfen]**
 4. **BPI im Coaching.** Ein Borderline-Inventar ist ein klinisches Verfahren. In einem Coaching-Fall lässt die App es zu, zeigt aber den Hinweis, dass die Interpretation keine diagnostische Aussage sein darf.
@@ -49,11 +51,12 @@ Keine Items, keine Normtabellen im Code. Skalennamen und Wertebereiche trägst d
 |---|---|
 | Kürzel, Name, Autor/en, Verlag, Auflage/Version | BPI, Borderline-Persönlichkeits-Inventar, … |
 | Lizenz | Papier gekauft · Verlagssystem · frei verfügbar · ungeklärt |
-| Urteilsart | Selbst · Fremd |
+| Urteilsart | Selbst · Fremd · Beobachtung |
 | Wer wird beurteilt | Klient/in · Kind · Paar |
 | Altersbereich | z. B. ab 16 |
 | Klinisch | ja/nein (steuert Hinweis im Coaching) |
-| Nur Screening | ja/nein (sperrt „gesichert“) |
+| Allein nicht diagnostisch | ja/nein (sperrt „gesichert“, wenn die Diagnose nur darauf beruht) |
+| Schulung erforderlich | ja/nein |
 | Skalen | Liste: Name, Normwert-Typ (T-Wert · Stanine · Prozentrang · Rohwert), Wertebereich, Auffälligkeitsgrenze **(nur wenn du sie aus dem Handbuch einträgst)** |
 
 ### 4.2 Messung (pro Durchführung)
