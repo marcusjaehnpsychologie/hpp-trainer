@@ -192,7 +192,16 @@ Jede Stufe: eigener Branch, Test mit **Fantasiedaten**, nie mit echten Klientend
 
 ---
 
-## 9. Offene Entscheidungen (brauche ich von dir)
+## 9. Entscheidungen
+
+**Getroffen am 08.11.2026:**
+- Start **ohne** Ende-zu-Ende-Verschlüsselung (Freitexte in eigenen Spalten, damit sie sich später nachrüsten lässt)
+- Nur ein Nutzer
+- Coaching **und** Heilkunde, Rechtsrahmen pro Fall
+- Eigenes privates Repo, getrennt vom HPP-Trainer
+- Rechnungen in der App → siehe `kundenkartei-rechnungen.md`
+
+**Ursprüngliche Fragen (Stand v0.1):**
 
 1. **Verschlüsselung vs. Claude-Zugriff:** Sind Notizen Ende-zu-Ende-verschlüsselt, können deine Claude-Skills sie nicht direkt lesen – nur über einen Export, den du bewusst auslöst. Unverschlüsselt wäre die Anbindung bequemer, aber datenschutzrechtlich schwächer. Meine Empfehlung: verschlüsseln + bewusster Export.
 2. **Nur du oder auch Mitarbeitende/Vertretung?** Ändert Rechte- und Rollenmodell.
