@@ -87,7 +87,9 @@ Jede Änderung erzeugt eine **neue Version**; alte Diagnosen werden nicht übers
 
 ### 3.4 Regeln, die die App erzwingt
 
+0. **Diagnosemodul erst nach Eintrag der Heilkunde-Erlaubnis** (Prüfung Dezember 2026). Kein Diagnosedatum vor dem Datum der Erlaubnis.
 1. **Kein Diagnosefeld in Coaching-Fällen.** Dort nur Arbeitshypothesen/Themen.
+1a. **Screening-Verfahren** (z. B. Autismus) führen höchstens zu „V“ plus Weiterverweisung, nie zu „G“.
 2. **Keine Diagnose für Personen, die nicht selbst untersucht wurden** (Rolle „Partner/in (erwähnt)“, „Kind (erwähnt)“, Gegenseite im Gutachtenverfahren).
 3. **6D11.x nie allein** – nur zusammen mit 6D10 oder QE50.7.
 4. **6D10 ohne Schweregrad** nur als „6D10.Z nicht näher bezeichnet“ mit Hinweis.

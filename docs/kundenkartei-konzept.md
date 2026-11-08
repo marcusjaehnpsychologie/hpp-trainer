@@ -13,6 +13,10 @@ Diagnosen und ICD-10/ICD-11 sind in [`diagnosen-icd.md`](diagnosen-icd.md) ausge
 | Repo | Eigenes privates Repo (Vorschlag `praxis-kartei`), getrennt vom HPP-Trainer |
 | Rechnungen | Bleiben in **sevDesk**. API-Anbindung erst, wenn die Kartei steht (Abschnitt 7) |
 | Priorität | Kartei von der Erstanfrage bis zur Gesprächsvorbereitung, inklusive Diagnosen |
+| Heilkunde-Erlaubnis | HP-Psychotherapie-Prüfung im **Dezember 2026**. Bis die Erlaubnis erteilt ist, gelten **alle Fälle als Coaching**, das Diagnosemodul ist gesperrt. Freischaltung über die Praxis-Einstellungen (Datum der Erlaubnis, Behörde, Aktenzeichen) |
+| Testverfahren | FPI-R, SSI, Autismus-Screening, BPI, EBI, Kinder-Screening, weitere folgen → [`testverfahren.md`](testverfahren.md) |
+
+**Übergang Coaching → Heilkunde:** Ein laufender Coaching-Fall wird nach der Erlaubnis **nicht rückwirkend umgestellt**. Entweder wird er ab einem Stichtag umgestellt (frühere Sitzungen bleiben Coaching), oder es wird ein neuer Heilkunde-Fall angelegt. Diagnosen gelten frühestens ab dem Datum der Erlaubnis.
 
 ---
 
@@ -126,7 +130,7 @@ Person ──< Fallbeteiligung >── Fall
 
 ### 3.3 Modul Borderline (aktiv, wenn Diagnose F60.3x / 6D11.5 oder manuell eingeschaltet)
 
-- **Diary Card** (pro Tag): Anspannung 0–100, Drang Selbstverletzung 0–5, Selbstverletzung ja/nein, Suizidgedanken 0–5, weitere Problemverhalten, eingesetzte Skills, Wirksamkeit. Zunächst trägst du sie ein (vom Papier oder Foto); eine Eingabe durch Klient/in kommt später.
+- **Diary Card** → ausgearbeitet in [`diary-card.md`](diary-card.md)
 - **Spannungskurve** über Wochen
 - **Behandlungshierarchie** (nach DBT): 1. suizidales/selbstverletzendes Verhalten · 2. therapiegefährdendes Verhalten · 3. Verhalten, das die Lebensqualität beeinträchtigt · 4. Skills-Aufbau → markiert, auf welcher Ebene die Sitzung arbeitet
 - **Skills-Repertoire**: welche Skills eingeführt, geübt, wirksam
@@ -227,8 +231,8 @@ Grundregel schon jetzt: **Keine Diagnose wandert automatisch zu sevDesk.** Nur a
 
 ## 10. Offene Punkte
 
-1. **Heilkunde-Erlaubnis**: Welche liegt vor? Ohne Erlaubnis darf kein Fall den Rechtsrahmen „Heilkunde“ bekommen und keine Diagnose gestellt werden – das Diagnosemodul bliebe dann gesperrt.
+1. ~~Heilkunde-Erlaubnis~~ → Prüfung Dezember 2026, Freischaltung per Einstellung
 2. Vorbereitungsblatt: Variante A oder B (Abschnitt 5)?
-3. Welche Testverfahren nutzt du tatsächlich? (bestimmt Messungs-Vorlagen und Lizenzprüfung)
+3. Testverfahren: genaue Bezeichnung von SSI, Autismus-Test, Kinder-Screening (siehe `testverfahren.md`)
 4. Diary Card: reicht deine Eingabe, oder sollen Klient/innen später selbst eintragen?
 5. Repo `praxis-kartei` anlegen (kann ich in dieser Sitzung nicht selbst)
