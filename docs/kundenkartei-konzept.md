@@ -1,210 +1,234 @@
-# Klientenkartei – Konzept (Entwurf v0.1, 08.11.2026)
+# Klientenkartei – Struktur (Entwurf v0.2, 08.11.2026)
 
-Ziel: alle Daten eines Klienten an einem Ort – iPhone und Browser, gleiche Daten, entwickelt über GitHub.
-Status: **Planung, noch kein Code.** Offene Entscheidungen stehen am Ende (Abschnitt 9).
+Status: **Planung, noch kein Code.**
+Diagnosen und ICD-10/ICD-11 sind in [`diagnosen-icd.md`](diagnosen-icd.md) ausgearbeitet.
 
----
+## 0. Entscheidungen (Stand 08.11.2026)
 
-## 1. Was vom InLei-Vorbild übertragbar ist – und was nicht
-
-| InLei-Funktion | Übertragung in die Praxis | Bewertung |
-|---|---|---|
-| Termine Tag/Woche/5 Tage | Terminansicht, Import aus Google Calendar (Online-Terminreservierung) | übernehmen |
-| Digitale Kundenakte | Klientenakte mit Fällen, Verlauf, Dokumenten | übernehmen, aber tiefer (mehrere Aufträge pro Person) |
-| Digitaler Fragebogen mit Datenschutz-Einwilligung, PDF | Anamnesebogen, Einwilligungen (DSGVO, Schweigepflicht, **Aufzeichnung Plaud**) | übernehmen |
-| Schritt-für-Schritt-Assistent mit Timer | Sitzungsablauf (50 Min.), Leitfaden aus der Gesprächsvorbereitung | übernehmen |
-| Vorher/Nachher | Prä-Post-Messwerte (BSL-23, IES-R usw.) als Verlaufskurve | nur als Messwerte |
-| Vorher/Nachher → Social-Media-Beitrag | – | **streichen** (Schweigepflicht) |
-| Treue-Bonus | – | **streichen** (in Therapie unangemessen) |
-| Erinnerung per WhatsApp | Erinnerung per E-Mail/SMS | **WhatsApp streichen** – Metadaten an Meta, für Gesundheitsdaten nicht vertretbar |
-| Nachbestellen | Rechnungen / Zahlungsstatus | anpassen |
-
-Kernunterschied: Ein Kosmetikstudio hat *eine Person = eine Akte*. Deine Arbeit hat **Personen, die in mehreren Aufträgen auftauchen** (Paar + Einzel, Mediation, Gutachten-Begleitung, Supervision). Die Kartei muss deshalb zwischen **Person** und **Fall/Auftrag** trennen – sonst entsteht genau die Vermischung, die dein Supervisions-Skill als Allparteilichkeitsproblem beschreibt.
-
----
-
-## 2. Datenstruktur (Datenmodell)
-
-```
-Person ──< Fallbeteiligung >── Fall ──< Termin ──1:1── Sitzungseintrag
-  │                              │
-  ├──< Einwilligung              ├──< Messung (Testwerte)
-  ├──< Kontaktweg                ├──< Dokument (Verweis auf Drive)
-  └──  Sperrvermerk              ├──< Frist / Aufgabe
-                                 ├──  Krisenplan
-                                 └──< Rechnung
-```
-
-### 2.1 Person (Stammdaten)
-- Vorname, Nachname, **Namensvarianten/Aliase** (für Kalender- und Plaud-Abgleich, z. B. „Yasmin“/„Jasmin“)
-- Geburtsdatum, Anschrift, Telefon, E-Mail(s) – E-Mail **normalisiert** gespeichert (googlemail = gmail, Punkte ignorieren), wie im Sperrlisten-Skill
-- Bevorzugter Kontaktweg + Anrede (Du/Sie)
-- Notfallkontakt
-- Status: Anfrage · aktiv · pausiert · abgeschlossen · **gesperrt**
-- Sperrvermerk (Datum, Grund intern) → ersetzt `/areas/terminsperrliste.md` als Quelle der Wahrheit
-- Drive-Klientenordner-ID (`Gesprächsnotizen/[Buchstabe]/[Klient]`)
-
-### 2.2 Fall / Auftrag (Kontrakt)
-- Setting: Einzel/Persönlichkeitsentwicklung · Paar · Mediation · Elterncoaching · Trennung · Borderline/DBT · Trauma (NET/EMDR) · Gutachten-Begleitung · Supervision
-- Rechtsrahmen: Coaching/Beratung **oder** heilkundliche Tätigkeit (steuert Sprache in Berichten, Aufbewahrungsfrist)
-- Beteiligte Personen mit Rolle (Klient, Partner/in, Elternteil, Kind – nur erwähnt, Anwalt, Gutachter/in)
-- Anliegen, vereinbarte Ziele, Kontraktdatum, Honorar, Frequenz
-- **Kontaktbilanz** (automatisch): Einzeltermine je beteiligter Person – Warnung bei Ungleichgewicht im Paarsetting
-- Nur bei Gutachten-Begleitung: Aktenzeichen, Gericht, Gutachter/in, Fristen (→ übernimmt die Rolle von `_FAELLE.md`)
-- Status: offen · laufend · ruhend · abgeschlossen (mit Abschlussdatum → startet Aufbewahrungsfrist)
-
-### 2.3 Termin
-- Datum, Beginn, Dauer (Standard 50 Min.), Ort/Online, Fall, teilnehmende Personen
-- Quelle: Online-Buchung (Google-Calendar-Event-ID) oder manuell
-- Status: geplant · stattgefunden · abgesagt (rechtzeitig/kurzfristig) · nicht erschienen
-- Abrechnungsstatus
-
-### 2.4 Sitzungseintrag (Verlauf)
-- Verknüpft mit Termin
-- Freitext-Notiz, Themen, eingesetzte Methoden (NET-Lifeline, EMDR-Protokoll, DBT-Skill, U.M.W.E.G.©-Baustein …)
-- Hausaufgabe / Vereinbarung bis zum nächsten Mal
-- **Risikoeinschätzung** (Pflichtfeld bei Borderline/Trauma: Suizidalität erfragt ja/nein, Einschätzung)
-- Verweise: Plaud-Transkript (Drive-Datei-ID), Vorbereitungs-DOCX (Drive-Datei-ID)
-- Trennung der Ebenen wie im Berichts-Skill: *Klientenangabe* / *Beobachtung* / *Einschätzung* als getrennte Felder
-
-### 2.5 Einwilligung
-- Typ: Datenschutzinformation · Schweigepflichtentbindung (gegenüber wem) · Einwilligung Aufzeichnung (Plaud) · Online-Sitzung · Kontakt per E-Mail/SMS
-- Datum, Version des Textes, unterschrieben (PDF), widerrufen am
-
-### 2.6 Messung (Fragebogen/Testwert)
-- Verfahren, Datum, Rohwert, Normwert/Einordnung, Messzeitpunkt (Prä · Verlauf · Post)
-- Darstellung als Verlaufskurve in der Akte
-- **Achtung Lizenzen:** BDI-II ist urheberrechtlich geschützt (Pearson). Digitale Durchführung im eigenen Tool nur mit Lizenz. Frei verfügbare Verfahren vorher einzeln prüfen. *Nicht von mir verifiziert, welche deiner Verfahren frei nutzbar sind.*
-
-### 2.7 Dokument
-- Typ (Bericht, Vorbereitung, Gutachten, Schriftsatz, Scan, Transkript), Datum, Titel
-- **Speicherort bleibt Drive** – die Kartei speichert nur die Datei-ID und öffnet den Link. Keine Doppelablage.
-
-### 2.8 Frist / Aufgabe
-- Fälligkeit, Fall, Text, erledigt – Startseite zeigt Fristen ≤ 14 Tage (Logik aus dem Fall-Cockpit)
-
-### 2.9 Krisenplan (nur bei Bedarf)
-- Frühwarnzeichen, wirksame Skills, Personen, die helfen, Notfallnummern (112, 116 117, Telefonseelsorge 0800 111 0 111)
-- Exportierbar als PDF für den Klienten
-
-### 2.10 Rechnung
-- Nummer, Datum, Termine, Betrag, bezahlt am – Export für Steuer
-
-### 2.11 Protokoll (technisch)
-- Wer hat wann welchen Datensatz geändert/gelöscht. Pflicht für Nachvollziehbarkeit.
-
----
-
-## 3. Bildschirme auf dem iPhone
-
-Untere Tab-Leiste (wie InLei):
-
-1. **Heute** – Termine des Tages, je Termin: Name, Setting, Warnflaggen (Sperre, Krisenplan aktiv, Frist), Button „Sitzung starten“ (Timer 50 Min., Notizfeld, Risikofeld)
-2. **Termine** – Tag / Woche / 5 Tage, Import aus Google Calendar
-3. **Klienten** – Suche (auch nach Alias), Filter nach Status und Setting
-4. **Fristen** – Gutachtenfristen, offene Aufgaben, fehlende Einwilligungen
-5. **Mehr** – Sperrliste, Export, Einstellungen, Sperrbildschirm
-
-**Klientenakte (eine Seite, Abschnitte aufklappbar):**
-- Kopf: Name, Status, Setting-Chips, Warnhinweise
-- Schnellaktionen: Anrufen · E-Mail · Neue Notiz · Drive-Ordner öffnen · Vorbereitung anstoßen
-- Fälle (bei Paar: beide Personen sichtbar, Kontaktbilanz)
-- Verlauf (Zeitstrahl: Termine + Notizen + Dokumente gemischt, neueste oben)
-- Messwerte (Kurve)
-- Einwilligungen (grün/rot)
-- Krisenplan
-- Rechnungen
-
-Auf dem Desktop-Browser dieselbe App, breiteres Layout (Liste links, Akte rechts).
-
----
-
-## 4. Technische Architektur
-
-### 4.1 Grundsatz
-**GitHub enthält nur Programmcode – niemals Klientendaten.** Das ist der wichtigste Unterschied zum HPP-Trainer: Dessen Sync über GitHub Gists ist für Lernstände in Ordnung, für Gesundheitsdaten (Art. 9 DSGVO, § 203 StGB) ausgeschlossen.
-
-### 4.2 Empfohlener Aufbau
-
-| Schicht | Vorschlag | Begründung |
-|---|---|---|
-| App | **PWA** (Web-App, auf dem iPhone „Zum Home-Bildschirm“) | Eine Codebasis für iPhone + Browser, kein App-Store, funktioniert bei dir bereits mit dem HPP-Trainer |
-| Code | Neues **privates** Repo, TypeScript + React + Vite | Mehr Struktur als eine 2-MB-`index.html`; Typen schützen das Datenmodell bei Änderungen durch Claude |
-| Hosting | Cloudflare Pages oder GitHub Pages (nur der Code) | Kostenlos, automatisches Deployment bei jedem Push |
-| Datenbank | **Supabase, Region Frankfurt**, mit AV-Vertrag | Postgres, Login, Zugriffsregeln (Row Level Security); Sync iPhone ↔ Browser |
-| Offline | Lokale Kopie in IndexedDB (Dexie) | Akte auch ohne Netz lesbar |
-| Verschlüsselung | Freitextfelder (Notizen, Risiko, Krisenplan) **im Gerät verschlüsselt** (WebCrypto AES-GCM), Schlüssel aus deiner Passphrase | Der Server-Betreiber sieht nur Chiffretext |
-| Login | E-Mail + Passkey/2FA, automatische Sperre nach X Minuten | Gerät verloren ≠ Daten weg |
-| Dokumente | Bleiben in Google Drive, Kartei hält nur die Datei-ID | Deine Skills (Gesprächsvorbereitung, Plaud-Zuordnung) arbeiten unverändert weiter |
-
-### 4.3 Verworfene Alternativen
-- **Nur lokal im Browser (ohne Server):** sicherer, aber iPhone und Desktop sehen unterschiedliche Daten; Safari kann Website-Daten löschen, wenn die Seite nicht als Home-Bildschirm-App installiert ist. Für eine Kartei, die überall gleich sein soll, ungeeignet.
-- **Native iOS-App (Swift):** besser auf dem iPhone, aber zweite Codebasis für den Browser, App-Store-Konto, deutlich höherer Aufwand.
-- **Daten als JSON in Google Drive:** einfache Anbindung an deine Skills, aber kein Mehrbenutzer-Sync, Konfliktgefahr bei gleichzeitiger Bearbeitung.
-
----
-
-## 5. Datenschutz – Schwachstellen, die vor dem Bau geklärt sein müssen
-
-1. **Google-Privatkonto (`@googlemail.com`):** Nach meinem Kenntnisstand bietet Google einen Auftragsverarbeitungsvertrag nur für Google Workspace, nicht für private Konten. Deine Gesprächsnotizen und Plaud-Transkripte liegen dort bereits heute. Das ist unabhängig von der neuen App ein offener Punkt. *Bitte rechtlich prüfen lassen – ich bin kein Ersatz für Datenschutzberatung.*
-2. **Plaud-Aufzeichnungen:** Einwilligung der Klienten zur Aufzeichnung muss dokumentiert sein → eigener Einwilligungstyp in der Kartei.
-3. **Supabase:** AV-Vertrag abschließen, Region EU wählen. Supabase Inc. ist ein US-Unternehmen – Drittlandbezug trotz EU-Rechenzentrum. Die Ende-zu-Ende-Verschlüsselung der Freitexte mindert das Risiko deutlich.
-4. **Aufbewahrung/Löschung:** Bei heilkundlicher Tätigkeit 10 Jahre nach Abschluss (§ 630f BGB); bei reinem Coaching keine vergleichbare Pflicht – dann eher löschen. Die Kartei braucht pro Fall ein Löschdatum und eine Löschliste.
-5. **Verzeichnis der Verarbeitungstätigkeiten** um die neue App ergänzen.
-6. **Gerätesicherheit:** iPhone mit Code + Face ID; App mit eigener Sperre.
-
----
-
-## 6. Zusammenspiel mit deinen bestehenden Abläufen
-
-| Heute | Mit Kartei |
+| Thema | Entscheidung |
 |---|---|
-| Online-Buchung landet in Google Calendar | Import-Button: Buchung → Termin, Person wird über E-Mail zugeordnet oder neu angelegt |
-| Sperrliste in `/areas/terminsperrliste.md` | Status „gesperrt“ in der Person; Import markiert Buchungen gesperrter Personen rot |
-| Fallregister `_FAELLE.md` (Gutachten) | Fälle mit Aktenzeichen + Fristen in der Kartei; `_FAELLE.md` als Export weiterführen oder ablösen |
-| Plaud-Transkript im Klientenordner | Sitzungseintrag verweist auf die Drive-Datei |
-| Gesprächsvorbereitung als DOCX im Drive | Dokument-Eintrag in der Akte mit Link |
-| Therapiebericht aus Notizen | „Bericht vorbereiten“: Export der Sitzungseinträge eines Zeitraums als Text für den Berichts-Skill |
+| Verschlüsselung | Zunächst **ohne** Ende-zu-Ende-Verschlüsselung. Sensible Freitexte stehen in eigenen Spalten, damit sie sich später verschlüsseln lassen |
+| Nutzer | Nur Marcus |
+| Rechtsrahmen | Coaching **und** Heilkunde, festgelegt **pro Fall** |
+| Repo | Eigenes privates Repo (Vorschlag `praxis-kartei`), getrennt vom HPP-Trainer |
+| Rechnungen | Bleiben in **sevDesk**. API-Anbindung erst, wenn die Kartei steht (Abschnitt 7) |
+| Priorität | Kartei von der Erstanfrage bis zur Gesprächsvorbereitung, inklusive Diagnosen |
 
 ---
 
-## 7. Umsetzung in Stufen
+## 1. Grundprinzipien
 
-| Stufe | Inhalt | Ergebnis |
-|---|---|---|
-| 0 | Entscheidungen aus Abschnitt 9, Datenschutzklärung | Freigabe |
-| 1 (MVP) | Login, Person, Fall, Termin manuell, Sitzungsnotiz (verschlüsselt), Klientenakte, Suche | Nutzbar auf iPhone + Browser |
-| 2 | Google-Calendar-Import, Sperrliste, Fristen-Ansicht, Kontaktbilanz | Ersetzt manuelle Pflege |
-| 3 | Einwilligungen mit Unterschrift + PDF, Krisenplan-PDF | Papierlos |
-| 4 | Messwerte + Verlaufskurve, Export für Berichte | Prä-Post sichtbar |
-| 5 | Rechnungen, Export Steuer | Abrechnung |
-| später | Fragebogen-Link für Klienten zum Selbstausfüllen | **Eigener Sicherheitsaufwand** (öffentlicher Zugang) – bewusst zuletzt |
-
-Jede Stufe: eigener Branch, Test mit **Fantasiedaten**, nie mit echten Klientendaten im Repo.
+1. **Person ≠ Fall.** Eine Person kann in mehreren Aufträgen auftauchen (Einzel + Paar, Mediation, Gutachten-Begleitung). Alles Fachliche – Diagnose, Ziele, Sitzungen, Krisenplan – hängt am **Fall**, nicht an der Person.
+2. **Der Rechtsrahmen steuert die Felder.** Ein Coaching-Fall hat **kein** Diagnosefeld, sondern nur Themen und Arbeitshypothesen. Ein Heilkunde-Fall hat Diagnosen nach ICD. Das schützt dich vor dem Vorwurf unerlaubter Heilkunde und hält die Sprache sauber.
+3. **Diagnosen nur für untersuchte Klienten.** Für Dritte, die nur über den Klienten bekannt sind (z. B. der „narzisstische Ex-Partner“), wird **nie** eine Diagnose gespeichert, nur „Beschreibung durch Klient/in“. Das ist besonders bei Narzissmus-Betroffenen und in der Gutachten-Begleitung wichtig.
+4. **Drei Ebenen getrennt** (wie im Therapiebericht-Skill): Klientenangabe · eigene Beobachtung · fachliche Einschätzung.
+5. **Die Kartei ist der Index, Drive der Speicher.** Transkripte, Vorbereitungs-DOCX und Berichte bleiben im Drive-Klientenordner. Die Kartei hält die Verweise und die strukturierten Daten.
 
 ---
 
-## 8. Was ich an der Ausgangsidee kritisch sehe
+## 2. Der Klientenweg – von der Erstanfrage bis zur Gesprächsvorbereitung
 
-- **„Alles an einem Ort“** ist nur halb richtig: Dokumente bleiben sinnvollerweise in Drive. Die Kartei ist der *Index* auf alles, nicht der Speicher für alles. Wer beides doppelt pflegt, hat nach drei Monaten zwei widersprüchliche Akten.
-- **Eigenbau vs. Kauf:** Es gibt Praxissoftware für Psychotherapie/Heilpraxis mit Kartei, Terminen, Rechnungen und Datenschutzdokumentation. Ich habe keinen aktuellen Marktvergleich gemacht. Eigenbau lohnt sich nur, wenn die Verzahnung mit deinen Skills (Plaud, Gesprächsvorbereitung, Fall-Cockpit) den Ausschlag gibt – das ist bei dir plausibel, aber eine Abwägung, kein Selbstläufer.
-- **Wartung:** Eine selbstgebaute App mit Gesundheitsdaten braucht Updates, Backups und einen Notfallplan (Was passiert mit den Daten, wenn die App nicht mehr läuft?). Stufe 1 enthält deshalb einen vollständigen Export (verschlüsselte Datei).
+Jeder Fall durchläuft Phasen. Die App zeigt pro Fall die aktuelle Phase und was in dieser Phase noch fehlt (rote Punkte).
+
+| Phase | Auslöser | Was erfasst wird | Pflicht vor nächster Phase |
+|---|---|---|---|
+| **1 Anfrage** | Online-Buchung, Mail, Telefon, Empfehlung | Person (Name, Kontakt), Quelle, Anliegen in einem Satz, Dringlichkeit, **Sperrlisten-Abgleich** automatisch | Sperrliste geprüft |
+| **2 Erstgespräch** | erster Termin | Auftragsklärung, Setting, **Rechtsrahmen-Entscheidung** (Checkliste unten), Beteiligte | Rechtsrahmen festgelegt |
+| **3 Aufnahme** | nach Erstgespräch | Einwilligungen (Datenschutz, Aufzeichnung Plaud, ggf. Schweigepflichtentbindung), Anamnese, Kontrakt (Honorar, Frequenz, Absageregel) | Datenschutz-Einwilligung; bei Plaud: Aufzeichnungs-Einwilligung |
+| **4 Diagnostik / Einschätzung** | Sitzung 1–3 | Testverfahren (Prä-Messung), Strukturhypothese, **Heilkunde: Diagnose(n)** · **Coaching: Themen/Hypothesen**, Risikoeinschätzung | Risikoeinschätzung dokumentiert |
+| **5 Planung** | nach Diagnostik | Ziele, Methoden, Behandlungsphase, **Krisenplan** (bei Borderline/Trauma Pflicht) | Ziele erfasst |
+| **6 Laufende Arbeit** | jeder Termin | Vorbereitung (DOCX-Verweis), Sitzungseintrag, Plaud-Transkript-Verweis, Hausaufgaben, Diary Card / Trauma-Daten, Verlaufsmessung | – |
+| **7 Zwischenbilanz** | z. B. alle 10 Sitzungen (einstellbar) | Zielabgleich, Verlaufsmessung, Diagnose überprüfen, ggf. Verlaufsbericht | – |
+| **8 Abschluss** | letzte Sitzung | Post-Messung, Abschlussbericht, Abschlussgrund | Abschlussdatum → startet Aufbewahrungsfrist |
+| **9 Nachsorge / Ruhend** | – | Wiederaufnahme legt einen **neuen Fall** an oder öffnet den alten | – |
+
+**Checkliste Rechtsrahmen (Phase 2)** – Hinweise, keine automatische Entscheidung:
+- Liegt ein Leiden mit möglichem Krankheitswert vor (Symptome, Leidensdruck, Funktionseinschränkung)? → Heilkunde, sofern Erlaubnis vorhanden; sonst Verweis auf ärztliche/psychotherapeutische Behandlung
+- Akute Suizidalität, Psychose, schwere Sucht? → Weiterverweisung dokumentieren
+- Ziel ist Entwicklung/Klärung ohne Krankheitswert? → Coaching
+- Ergebnis und Begründung werden gespeichert (Nachweis bei späteren Fragen)
 
 ---
 
-## 9. Entscheidungen
+## 3. Datenmodell
 
-**Getroffen am 08.11.2026:**
-- Start **ohne** Ende-zu-Ende-Verschlüsselung (Freitexte in eigenen Spalten, damit sie sich später nachrüsten lässt)
-- Nur ein Nutzer
-- Coaching **und** Heilkunde, Rechtsrahmen pro Fall
-- Eigenes privates Repo, getrennt vom HPP-Trainer
-- Rechnungen in der App → siehe `kundenkartei-rechnungen.md`
+### 3.1 Übersicht
 
-**Ursprüngliche Fragen (Stand v0.1):**
+```
+Person ──< Fallbeteiligung >── Fall
+  │                             │
+  ├─ Kontakt, Sperrvermerk      ├──< Termin ──1:1── Sitzungseintrag ──< Hausaufgabe
+  ├─< Einwilligung              ├──< Diagnose (nur Heilkunde) ──> ICD-Katalog / Mapping
+  ├─  Anamnese (einmal,         ├──< Arbeitshypothese / Thema
+  │    versioniert)             ├──< Messung (Testwerte)
+  └─  sevDesk-Kontakt-ID        ├──< Ziel
+                                ├──  Krisenplan
+                                ├──< Dokument (Drive-Verweis)
+                                ├──< Frist / Aufgabe
+                                ├──  Modul Borderline  (Diary Card, Skills)
+                                └──  Modul Trauma      (Ereignisse, Phase, EMDR/NET)
+```
 
-1. **Verschlüsselung vs. Claude-Zugriff:** Sind Notizen Ende-zu-Ende-verschlüsselt, können deine Claude-Skills sie nicht direkt lesen – nur über einen Export, den du bewusst auslöst. Unverschlüsselt wäre die Anbindung bequemer, aber datenschutzrechtlich schwächer. Meine Empfehlung: verschlüsseln + bewusster Export.
-2. **Nur du oder auch Mitarbeitende/Vertretung?** Ändert Rechte- und Rollenmodell.
-3. **Coaching oder Heilkunde?** Bestimmt Aufbewahrungsfristen und Berichtssprache je Fall.
-4. **Eigenes Repo:** Vorschlag `praxis-kartei` (privat), getrennt vom HPP-Trainer.
-5. **Rechnungen:** in der App oder weiterhin extern?
+### 3.2 Kern
+
+**Person**
+- Vorname, Nachname, Namensvarianten (für Kalender- und Plaud-Abgleich), Geburtsdatum, Anschrift
+- E-Mail(s) normalisiert, Telefon, bevorzugter Kontaktweg, Anrede Du/Sie
+- Notfallkontakt
+- Status: Anfrage · aktiv · ruhend · abgeschlossen · **gesperrt** (+ Sperrdatum → ersetzt die Sperrliste)
+- Drive-Ordner-ID (`Gesprächsnotizen/[Buchstabe]/[Klient]`)
+- `sevdesk_contact_id` (leer bis zur Anbindung)
+
+**Fall**
+- Titel (z. B. „Paar M./K. 2026“), Setting, **Rechtsrahmen** (Coaching/Heilkunde) mit Begründung und Datum
+- Phase (1–9), Beginn, Abschluss, Abschlussgrund
+- Anliegen (Klientenwortlaut), Auftrag (eigene Formulierung)
+- Kontrakt: Honorar, Frequenz, Absageregel, Datum
+- Bei Gutachten-Begleitung: Aktenzeichen, Gericht, Gutachter/in, Anwalt/Anwältin (ersetzt `_FAELLE.md`)
+- Kontaktbilanz (berechnet, bei Paar/Mediation)
+
+**Fallbeteiligung** – Person ↔ Fall mit Rolle: Klient/in · Partner/in · Elternteil · Kind (erwähnt) · Anwalt · Gutachter/in · Zuweiser
+
+**Termin** – Datum, Dauer (Standard 50 Min.), online/vor Ort, Teilnehmende, Quelle (Google-Calendar-ID), Status (geplant · stattgefunden · kurzfristig abgesagt · nicht erschienen), Abrechnungsstatus (für sevDesk)
+
+**Sitzungseintrag**
+- Klientenangabe · Beobachtung · Einschätzung (drei Felder)
+- Themen, eingesetzte Methoden (Auswahlliste: NET, EMDR, DBT-Skill, Stabilisierung, U.M.W.E.G.©, TA, systemisch …)
+- **Risikoeinschätzung**: Suizidalität erfragt ja/nein, Einstufung (keine · latent · akut), Maßnahme – Pflicht bei Borderline/Trauma-Fällen
+- Verweise: Vorbereitung-DOCX, Plaud-Transkript (Drive-IDs)
+- Nächste Schritte
+
+**Hausaufgabe** – Text, vergeben am, Besprechung am, erledigt ja/teilweise/nein
+
+**Anamnese** (pro Person, versioniert) – Biografie, Familie, Partnerschaft, Beruf, Vorbehandlungen, Medikation, körperliche Erkrankungen, Substanzkonsum, Ressourcen, Suizidversuche in der Vorgeschichte
+
+**Einwilligung** – Typ, Textversion, Datum, Unterschrift (PDF), widerrufen am
+
+**Ziel** – Formulierung, Messkriterium, Ausgangswert, Stand, erreicht ja/teilweise/nein
+
+**Messung** – Verfahren, Datum, Messzeitpunkt (Prä · Verlauf · Post), Rohwert, Einordnung; Verlaufskurve pro Verfahren
+
+**Krisenplan** – Frühwarnzeichen, Auslöser, wirksame Skills, hilfreiche Personen, Notfallnummern, Abmachungen; Export als PDF für Klient/in
+
+**Dokument** – Typ, Datum, Titel, Drive-ID
+
+**Frist/Aufgabe** – Fälligkeit, Text, erledigt (Startseite: alles ≤ 14 Tage)
+
+**Arbeitshypothese** (Coaching **und** Heilkunde)
+- Strukturhypothese nach Kernberg: neurotisches · Borderline- · psychotisches Strukturniveau (= **Organisationsniveau, keine Diagnose**)
+- OPD-Strukturniveau (optional)
+- Themen-Cluster: Narzissmus-Betroffenheit, Trennung, Selbstwert, Bindung, Elternschaft …
+- Beleg, Revisionskriterium (aus dem Persönlichkeitsstruktur-Skill)
+
+> Wichtig: „Borderline-**Persönlichkeitsorganisation**“ (Kernberg, Strukturniveau) und „Borderline-**Persönlichkeitsstörung**“ (ICD) sind getrennte Felder. Die App darf aus dem einen nie das andere ableiten.
+
+**Diagnose** → siehe [`diagnosen-icd.md`](diagnosen-icd.md)
+
+### 3.3 Modul Borderline (aktiv, wenn Diagnose F60.3x / 6D11.5 oder manuell eingeschaltet)
+
+- **Diary Card** (pro Tag): Anspannung 0–100, Drang Selbstverletzung 0–5, Selbstverletzung ja/nein, Suizidgedanken 0–5, weitere Problemverhalten, eingesetzte Skills, Wirksamkeit. Zunächst trägst du sie ein (vom Papier oder Foto); eine Eingabe durch Klient/in kommt später.
+- **Spannungskurve** über Wochen
+- **Behandlungshierarchie** (nach DBT): 1. suizidales/selbstverletzendes Verhalten · 2. therapiegefährdendes Verhalten · 3. Verhalten, das die Lebensqualität beeinträchtigt · 4. Skills-Aufbau → markiert, auf welcher Ebene die Sitzung arbeitet
+- **Skills-Repertoire**: welche Skills eingeführt, geübt, wirksam
+- Verlaufsmessung (z. B. BSL-23) **[Lizenz/Nutzungsbedingungen prüfen]**
+
+### 3.4 Modul Trauma (aktiv bei Diagnose F43.x / 6B4x / dissoziativen Störungen oder manuell)
+
+- **Ereignisliste** (Stichworte, keine Detailschilderung): Art, Alter, Typ I (einmalig) / Typ II (wiederholt), Täterbezug ja/nein
+- **Behandlungsphase**: Stabilisierung · Konfrontation/Verarbeitung · Integration – mit Datum des Wechsels und Begründung
+- **Stabilisierungsressourcen**: sicherer Ort, Tresor, innere Helfer, Notfallkoffer
+- **Dissoziation**: Ausprägung, Warnzeichen, was zurückholt (Grounding)
+- **NET**: Lebenslinie (Blumen/Steine) als Verweis auf Foto/Dokument, bearbeitete Steine mit Datum
+- **EMDR**: Zielerinnerung (Ausgangsbild in Stichworten), negative/positive Kognition, VoC 1–7, SUD 0–10 (Start/Ende), Körperempfindung, Status (offen · in Bearbeitung · abgeschlossen)
+- Verlaufsmessung (z. B. IES-R, PCL-5, ITQ für komplexe PTBS) **[Lizenz/Nutzungsbedingungen prüfen]**
+
+---
+
+## 4. Klientenakte auf dem iPhone
+
+Tabs unten: **Heute · Termine · Klienten · Fristen · Mehr**
+
+Die **Akte** ist eine Seite mit aufklappbaren Abschnitten:
+
+1. **Kopf**: Name, Status, aktive Fälle als Chips, Warnflaggen (🔴 Risiko akut · Krisenplan · Sperre · fehlende Einwilligung · Frist)
+2. **Schnellaktionen**: Anrufen · E-Mail · Sitzung starten · Drive-Ordner · **Vorbereitungsblatt**
+3. **Fall-Wechsler** (bei mehreren Fällen)
+4. **Überblick des Falls**: Phase, Rechtsrahmen, Diagnosen/Hypothesen, Ziele mit Fortschritt
+5. **Verlauf** (Zeitstrahl: Termine, Sitzungseinträge, Messungen, Dokumente)
+6. **Modul Borderline / Trauma** (nur wenn aktiv)
+7. **Messwerte** (Kurven)
+8. **Anamnese · Einwilligungen · Krisenplan · Dokumente**
+
+**„Sitzung starten“**: Timer 50 Min., letzte Hausaufgabe und offene Punkte oben, Notizfelder in den drei Ebenen, Risikofeld, am Ende „nächste Schritte“ + Hausaufgabe.
+
+---
+
+## 5. Anbindung an die Gesprächsvorbereitung
+
+Heute liest der Skill `gespraechsvorbereitung` den Drive-Ordner und den Kalender. Mit der Kartei kommt eine strukturierte Quelle dazu:
+
+**Vorbereitungsblatt** (pro Fall, auf Knopfdruck oder per Abfrage durch den Skill):
+- Kopf: Name (Vorname + Initiale), Setting, Rechtsrahmen, Phase, Sitzungsnummer
+- aktive Diagnosen / Arbeitshypothesen
+- Ziele + Stand
+- letzte 3 Sitzungen (Kernpunkte, nächste Schritte)
+- offene Hausaufgaben
+- Risikostatus + Krisenplan-Kurzform
+- Modul-Daten: Diary-Card-Trend der letzten 2 Wochen / Behandlungsphase und offene EMDR-Ziele
+- Messwerte-Trend
+- Fristen
+
+Technische Varianten (Entscheidung offen, Abschnitt 9):
+- **A)** Der Skill fragt die Datenbank direkt ab (nur lesender Zugang). Immer aktuell, keine Kopien.
+- **B)** Die App schreibt das Blatt als Datei in den Drive-Klientenordner. Einfach, aber erzeugt Kopien sensibler Daten in Drive.
+
+Empfehlung: **A**.
+
+---
+
+## 6. Architektur (unverändert)
+
+PWA (iPhone + Browser), TypeScript/React/Vite, eigenes privates Repo, Hosting Cloudflare oder GitHub Pages (nur Code), Datenbank Supabase Region Frankfurt mit AV-Vertrag, Login mit zweitem Faktor, Zugriffsregeln (Row Level Security), Offline-Kopie im Gerät. **Keine Klientendaten in GitHub**, Tests nur mit Fantasiedaten.
+
+---
+
+## 7. sevDesk (später)
+
+Für die spätere Anbindung werden jetzt nur Felder vorgesehen:
+- Person: `sevdesk_contact_id`
+- Termin: Abrechnungsstatus (offen · an sevDesk übergeben · abgerechnet), `sevdesk_invoice_id`
+- Fall: Rechnungsempfänger (bei Paar/Mediation: wer zahlt, ggf. Aufteilung)
+
+Grundregel schon jetzt: **Keine Diagnose wandert automatisch zu sevDesk.** Nur auf ausdrücklichen Wunsch des Klienten (Einreichung bei PKV/Beihilfe) und pro Rechnung bestätigt.
+
+---
+
+## 8. Datenschutz – Mindestbedingungen
+
+- AV-Vertrag mit Supabase vor dem ersten echten Datensatz; Region EU
+- Login mit Passkey/2FA, automatische Sperre
+- Protokoll aller Änderungen und Löschungen
+- Aufbewahrung: Heilkunde-Fälle 10 Jahre nach Abschluss (§ 630f BGB); Coaching-Fälle: Löschfrist selbst festlegen (Vorschlag: 3 Jahre) **[prüfen]**
+- Diagnosen sind der sensibelste Teil – deshalb Abschnitt 3 in `diagnosen-icd.md`
+- Offener Altpunkt: Google-Privatkonto ohne AV-Vertrag (siehe v0.1)
+
+---
+
+## 9. Stufen
+
+| Stufe | Inhalt |
+|---|---|
+| 1 | Person, Fall, Fallbeteiligung, Termin, Sitzungseintrag, Akte, Suche, Login |
+| 2 | Phasen mit Pflichtpunkten, Einwilligungen, Anamnese, Kalender-Import, Sperrliste |
+| 3 | **Diagnosen + ICD-Katalog + Mapping**, Arbeitshypothesen, Ziele, Krisenplan |
+| 4 | Module Borderline und Trauma, Messungen mit Kurven |
+| 5 | Vorbereitungsblatt + Anbindung Gesprächsvorbereitung |
+| 6 | sevDesk-Anbindung |
+
+## 10. Offene Punkte
+
+1. **Heilkunde-Erlaubnis**: Welche liegt vor? Ohne Erlaubnis darf kein Fall den Rechtsrahmen „Heilkunde“ bekommen und keine Diagnose gestellt werden – das Diagnosemodul bliebe dann gesperrt.
+2. Vorbereitungsblatt: Variante A oder B (Abschnitt 5)?
+3. Welche Testverfahren nutzt du tatsächlich? (bestimmt Messungs-Vorlagen und Lizenzprüfung)
+4. Diary Card: reicht deine Eingabe, oder sollen Klient/innen später selbst eintragen?
+5. Repo `praxis-kartei` anlegen (kann ich in dieser Sitzung nicht selbst)
